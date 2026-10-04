@@ -1,0 +1,112 @@
+# gussybunnies.yml - Gussy's 20 free research workers (gussy_spacebunny01..20) on 4 GitHub-hosted runners, 5 each.
+# Built by engine 2026-10-04 on admin's order, from engine's own enginebunnies.yml (same rules, same memory cap).
+# - PUBLIC repo on purpose: GitHub-hosted minutes are free only for public repos on standard runners. Never make this
+#   repo private and never use a larger-runner label: either one starts billing.
+# - Each worker loop = one fresh `claude -p` per task row, model locked to a free OpenRouter model. No Anthropic
+#   credential exists here, so nothing can bill Claude.
+# - Runner R (0..3) hosts gussy_spacebunny(5R+1)..(5R+5). 5 per runner, not more: a 16 GB runner died at 8 workers.
+# - The job is capped at 350 min; JOB_END stops new rows ~5h45m in. The cron restarts it every 6 h; the concurrency
+#   group per runner keeps two copies of one runner's workers from overlapping.
+# - PUBLIC LOGS: nothing private is printed. Keys are repo secrets (OPENROUTER_API_KEY, CC_AGENT_TOKEN), the kit
+#   comes from the Bull4Life Command Center hub (not this repo), workers write only to their own log files, and the
+#   summary prints counts only.
+name: gussybunnies
+on:
+  schedule:
+    - cron: '50 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'free OpenRouter model id for the workers (empty = the kit default)'
+        required: false
+        default: ''
+      runners:
+        description: 'which runners to start, JSON list (default all four)'
+        required: false
+        default: '[0,1,2,3]'
+permissions:
+  contents: read
+jobs:
+  bunnies:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.runners || '[0,1,2,3]') }}
+    concurrency:
+      group: gussybunnies-${{ matrix.runner }}
+      cancel-in-progress: false
+    name: runner ${{ matrix.runner }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: install claude cli
+        run: npm i -g @anthropic-ai/claude-code > /dev/null 2>&1 && claude --version
+      - name: fetch kit
+        env:
+          CC_AGENT_TOKEN: ${{ secrets.CC_AGENT_TOKEN }}
+          R: ${{ matrix.runner }}
+        run: |
+          set -eu
+          umask 077
+          printf 'CC_AGENT_TOKEN=%s\n' "$CC_AGENT_TOKEN" > "$HOME/cc.env"
+          mkdir -p "$HOME/bunnies"
+          ME=$(printf 'gussy_spacebunny%02d' $(( 5*R + 1 )))
+          curl -sf -H "Authorization: Bearer $CC_AGENT_TOKEN" -H "X-CC-Agent: $ME" \
+            "https://bull4life.com/cc/api/artifacts/read?rel=engine/current/kit/gussy-kit.md" \
+            | jq -r .body | base64 -d | tar xz -C "$HOME/bunnies"
+          chmod +x "$HOME/bunnies/run_gh.sh"
+          echo "kit files: $(find "$HOME/bunnies" -type f | wc -l)"
+      - name: run 5 bunnies
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BUNNY_MODEL: ${{ inputs.model }}
+          R: ${{ matrix.runner }}
+        run: |
+          # SANDBOX: workers run as the unprivileged user `lab` with no sudo, so no worker command can stop the runner.
+          sudo useradd -m -s /bin/bash lab
+          sudo cp -a "$HOME/bunnies" "$HOME/cc.env" /home/lab/
+          sudo chown -R lab:lab /home/lab
+          export JOB_END=$(( $(date +%s) + 345*60 ))
+          # MEMORY CAP: every worker runs in ONE cgroup, b4llab.slice: MemoryMax 15/16 of the box, no swap, MemoryHigh
+          # 14/16. The kernel kills a worker process inside it and the runner agent outside keeps its memory.
+          MT=$(awk '/MemTotal/{print $2}' /proc/meminfo)
+          printf '[Slice]\nMemoryAccounting=yes\nMemoryHigh=%dK\nMemoryMax=%dK\nMemorySwapMax=0\n' $(( MT*14/16 )) $(( MT*15/16 )) \
+            | sudo tee /etc/systemd/system/b4llab.slice > /dev/null
+          sudo systemctl daemon-reload
+          ( while sleep 60; do echo "MEM $(date -u +%H:%M) used/total $(free -m | awk '/Mem/{print $3"/"$2}') load $(cut -d' ' -f1 /proc/loadavg) lab_procs $(pgrep -c -u lab)"; done ) &
+          start() {
+            ( echo 1000 > /proc/self/oom_score_adj
+              exec sudo --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL systemd-run --scope -q \
+                --slice=b4llab.slice -- sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL \
+                env "PATH=$PATH" setsid -w nice -n 15 bash /home/lab/bunnies/run_gh.sh "$1" ) > /dev/null 2>&1 &
+          }
+          for i in 1 2 3 4 5; do
+            start "$(printf 'gussy_spacebunny%02d' $(( 5*R + i )))"
+            sleep 20
+          done
+          sleep 10
+          SLICE_PROCS=$( (cat /sys/fs/cgroup/b4llab.slice/cgroup.procs /sys/fs/cgroup/b4llab.slice/*/cgroup.procs 2>/dev/null || true) | wc -l)
+          if [ "$SLICE_PROCS" -eq 0 ]; then
+            echo "::warning::b4llab.slice is empty, workers start WITHOUT the memory cap"
+            for i in 1 2 3 4 5; do
+              ( echo 1000 > /proc/self/oom_score_adj
+                exec sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL env "PATH=$PATH" \
+                  setsid -w nice -n 15 bash /home/lab/bunnies/run_gh.sh "$(printf 'gussy_spacebunny%02d' $(( 5*R + i )))" ) > /dev/null 2>&1 &
+              sleep 20
+            done
+          else
+            echo "slice cap: $(cat /sys/fs/cgroup/b4llab.slice/memory.max) bytes, $SLICE_PROCS procs in it"
+          fi
+          echo "5 workers started on runner $R"
+          wait
+          echo "all workers ended"
+      - name: summary (counts only)
+        if: always()
+        run: |
+          for d in $(sudo sh -c 'ls -d /home/lab/bunnies/gussy_*/ 2>/dev/null'); do
+            sudo test -f "$d/logs/runner.log" || continue
+            echo "$(basename "$d"): starts=$(sudo grep -c ' start ' "$d/logs/runner.log") ends=$(sudo grep -c ' end ' "$d/logs/runner.log")"
+          done
