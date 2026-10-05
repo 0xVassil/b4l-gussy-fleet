@@ -3,7 +3,7 @@
 # weak"). Built by engine from compute/fleet_workflows/enginelab.yml (the personal-repo original); differences:
 # - Runners 20-29 = workers engine_lab121..engine_lab180 (6R+i+1, tools/fleet_names.py). Runners 0-19 live in
 #   engine's own repos; never list one of them here or two copies of its workers would work the same claims.
-# - The model is LOCKED to stealth/space-bunny-alpha: the OpenRouter key here is Gussy's, for stealth runs only.
+# - Model: Space Bunny Free on OpenCode Zen through the OpenCode CLI, key = secret ENGINE_OC_KEY (10-05).
 # - No repo variables (the partner token cannot read them): new names are fixed, there is no B4L_LAB_HOME guard.
 # - The final wait watches the worker processes only. The original `wait` also waited for the MEM logger, so every
 #   job ran to the 350-min cap, ended "cancelled" and never printed its summary.
@@ -14,8 +14,7 @@
 name: enginelab
 run-name: ${{ inputs.until && format('enginelab partner wave {0}', inputs.runners) || 'enginelab partner' }}
 on:
-  schedule:
-    - cron: '20 */6 * * *'
+  # no cron while the pools ramp (10-05): runners are dispatched on purpose, then respawn themselves
   workflow_dispatch:
     inputs:
       runners:
@@ -77,6 +76,7 @@ jobs:
         run: |
           pip install --quiet numpy pandas matplotlib scipy ccxt
           npm i -g @anthropic-ai/claude-code > /dev/null 2>&1 && claude --version
+          npm i -g opencode-ai > /dev/null 2>&1 && echo "opencode $(opencode --version 2>&1 | head -1)"
       - name: decrypt engine (a git baseline for the workers' diffs)
         env:
           KIT_KEY: ${{ secrets.B4L_KIT_KEY }}
@@ -103,7 +103,11 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           RUNNER_NO: ${{ matrix.runner }}
-          BUNNY_MODEL: stealth/space-bunny-alpha
+          # admin 10-05: Space Bunny Free on OpenCode Zen via the OpenCode CLI, on an OpenCode key (70% of workers = engine)
+          BUNNY_HARNESS: opencode
+          BUNNY_MODEL: opencode/space-bunny-free
+          BUNNY_VARIANT: max
+          BUNNY_API_KEY: ${{ secrets.ENGINE_OC_KEY }}
           UNTIL: ${{ inputs.until }}
         run: |
           wname() { printf 'engine_lab%02d' $(( 6*RUNNER_NO + $1 + 1 )); }
@@ -126,8 +130,8 @@ jobs:
             n=$(wname $i)
             if [ "$i" -eq 0 ]; then export ULTRA=1; else export ULTRA=; fi
             ( echo 1000 > /proc/self/oom_score_adj
-              exec sudo --preserve-env=OPENROUTER_API_KEY,JOB_END,ROLE,ULTRA,BUNNY_MODEL systemd-run --scope -q \
-                --slice=b4llab.slice -- sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,ROLE,ULTRA,BUNNY_MODEL \
+              exec sudo --preserve-env=OPENROUTER_API_KEY,JOB_END,ROLE,ULTRA,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY systemd-run --scope -q \
+                --slice=b4llab.slice -- sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,ROLE,ULTRA,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY \
                 env "PATH=$PATH" setsid -w nice -n 15 bash /home/lab/bunnies/run_gh.sh "$n" ) > /dev/null 2>&1 &
             sleep 20
           done
@@ -139,7 +143,7 @@ jobs:
               n=$(wname $i)
               if [ "$i" -eq 0 ]; then export ULTRA=1; else export ULTRA=; fi
               ( echo 1000 > /proc/self/oom_score_adj
-                exec sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,ROLE,ULTRA,BUNNY_MODEL env "PATH=$PATH" \
+                exec sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,ROLE,ULTRA,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY env "PATH=$PATH" \
                   setsid -w nice -n 15 bash /home/lab/bunnies/run_gh.sh "$n" ) > /dev/null 2>&1 &
               sleep 20
             done
