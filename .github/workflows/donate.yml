@@ -1,0 +1,120 @@
+name: Donate compute
+
+# Runs the Bull4Life PUBLIC B4L grid fleet on GitHub-hosted runners. Each runner downloads the COMPILED
+# node (no source) and runs the project's own optimizer/hunter search for a bounded window. Legit CI:
+# scoped to the project's software, bounded per run, public repo (unlimited minutes).
+#
+# ── FLEET ALLOCATION (Master 2026-08-04: "divide the ~20 machines by need") ──────────────────────────────
+# GitHub Free = 20 concurrent jobs per org (public + PRIVATE share ONE pool). We split them, leaving headroom:
+#     14 here  → B4L grid compute (this repo, ubuntu)          ── the diamond/token search substrate
+#      4 there → PEX mesh validators (bull4life-build, windows) ── the exchange decentralization substrate
+#      1 held  → the verify-pool BRAIN (bull4life-engine, private) ── verifies pooled diamonds → credits → mint
+#      1 spare → occasional PEX test-node / build slack
+#   = 20 cap. CRITICAL: 16 grid saturated the pool and STARVED the verify brain (it queued behind 5.5h holds →
+#     diamonds pooled but never verified → no tokens). The brain is the token pipeline's critical path, so the
+#     grid caps at 14 to always leave it a slot. (Proper long-term fix: move the verify brain onto the server so
+#     it never competes for the GitHub pool + can verify continuously — see [[master-laptop-offload]].)
+#
+# ── INFERENCE LANE: OFF (Master 2026-09-07: "don't run 14b, too small - only 30b or bigger"). B4L_INFER is unset, so the node never
+#    claims /inference/*; its idle-fallback to hunt/optimize is the same node logic as always. 30B+ inference lives in the AI cluster.
+# ── BUILD COORDINATION ("at build, remove a few, spin the build, resume") ─────────────────────────────────
+# A node-binary build (bull4life-build → build.yml) needs ~3 concurrent slots (win + linux + arm64). With the
+# pool full (16+4) it would queue behind 5.5h grid holds. So at RELEASE time the engine runs tools/fleet_build.sh:
+#     1. cancel this in-progress grid run  (frees the 16 slots)
+#     2. dispatch build.yml               (builds in the freed pool, ~40min)
+#     3. the 6h cron below auto-respins the 16 grid nodes on the current binary — no manual resume.
+# Builds are infrequent (a release), so the brief grid pause is cheap and the fleet self-heals on the next tick.
+#
+# To donate your OWN machine: fork this repo, set repo VARIABLE B4L_EMAIL = your bull4life.com login
+# (Settings → Secrets and variables → Actions → Variables), then enable + run this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Minutes to donate (max 330)'
+        default: '350'
+      nodes:
+        description: 'JSON list of grid node numbers for an EXTRA window (no respawn); empty = the regular grid'
+        required: false
+        default: ''
+  schedule:
+    - cron: '20 */6 * * *'   # every 6h (00/06/12/18 UTC). Runs last ~5h50m → ~10-min gaps = near-continuous,
+    #                         but still 4 DISCRETE bounded runs/day (not overlapping) so it stays legit CI,
+    #                         NOT a 24/7 farm. Do NOT tighten to overlapping — that reads as a compute farm
+    #                         (GitHub Actions ToS) and risks a ban that would kill the whole fleet.
+
+concurrency:
+  group: donate-window${{ inputs.nodes && '-extra' || '' }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  donate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    strategy:
+      fail-fast: false
+      # 10-04 account cap (admin): personal account <= 20 live jobs; donate 11 + lab 4 + bunnies 2 + chain <= 3
+      # 10-04 account cap (admin 10-04 "donate runned to 5 and all the rest for our fleet"): <= 20 live jobs; donate 5 + lab 4 + bunnies 2 + fleet 6 + chain <= 3
+      # 10-04 admin: "replace donate runners in your runners keep only minimum runner to keep the b4l chain working so 1
+      # optimize and 1 verify": 1 grid node here (optimize); verify = the chain's verify+mint lane. Freed slots -> engine + site agents.
+      matrix:
+        # 10-05 admin: "raise our normal compute node". Gussy's account (Pro): engine's 10 runners there run grid nodes
+        # bull4life-gh3-1..10 while no stealth model exists (the model fleets on this repo are disabled). No secret is
+        # needed: the node is the public signed release from dmanobela-glitch/b4l-mint.
+        n: ${{ fromJSON(inputs.nodes || '[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]') }}   # was 16 grid runners on the SECOND account (Master 2026-09-07: 17 of 20 = 16 grid + 1 verify; the AI cluster is dispatch-only after the usefulness measurement)
+    steps:
+      - name: Donate to the grid
+        env:
+          B4L_COORDINATOR: https://compute.bull4life.com
+          B4L_EMAIL: ${{ vars.B4L_EMAIL }}
+          B4L_NICKNAME: Bull4Life GitHub
+          B4L_NODE_ID: bull4life-gh3-${{ matrix.n }}   # 18 runners, all "Bull4Life GitHub" (no personal username)
+          B4L_POWER: '100'
+          B4L_END_DATE: '2026-07-21'   # pin candle window to the brain's verify_env.json so diamonds reproduce+merge (advance TOGETHER with a candle refresh, never alone)
+        run: |
+          set -e
+          # (no pex-lite co-node here: PEX is off the engine fleet - Master 2026-09-07)
+          # ── B4L GRID NODE ──
+          # GRID ONLY (Master 2026-09-07: "don't run 14b, too small - only 30b or bigger"): the 14B inference lane is OFF on the
+          # fleet (B4L_INFER unset -> the node never claims /inference/*; its optimize/hunt logic is untouched). Pin the node
+          # binary to the release matching VERSION in compute/node.py; an OLDER binary runs older logic -> the verifier re-run
+          # mismatches -> 0 verified. Bump this tag EACH release (with a candle refresh).
+          curl -fsSL https://github.com/dmanobela-glitch/b4l-mint/releases/download/v1.20.0/b4l_node-linux -o b4l_node   # binaries live on bull4life-build (where build.yml + publish-release.yml produce them)
+          chmod +x b4l_node
+          mins="${{ github.event.inputs.minutes || 350 }}"
+          echo "donating ~${mins} min as ${B4L_NICKNAME:-anon} (account: ${B4L_EMAIL:-unlinked}) (grid only, node v1.20.0)"
+          # RESTART LOOP (self-heal supervisor). The node self-updates then EXITS, expecting a supervisor to
+          # relaunch the swapped-in-place ./b4l_node (node.py os.replace(new, exe) → os._exit). GitHub runners
+          # have NO such supervisor, so a bare single run died in ~9s the instant the node updated and the
+          # ENTIRE fleet was silently lost. Loop-relaunch until the donation budget is spent so the freshly
+          # installed binary runs the remainder. sleep 2 avoids a tight crash-loop.
+          end=$(( $(date +%s) + mins*60 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            remain=$(( end - $(date +%s) ))
+            [ "$remain" -le 5 ] && break
+            timeout "$remain" ./b4l_node --run || true
+            sleep 2
+          done
+          echo "donation window complete"
+
+  # __B4L_RESPAWN__ (2026-09-07): GitHub's cron fired this fleet 2-4 h late and skipped slots outright (every run was a
+  # `schedule` event at 09:48, 14:23, 19:47, 02:24, 10:04, 14:45, 19:51, 02:20 - never on the hour), so the grid idled
+  # between windows. Each window now dispatches the NEXT one itself when its jobs end; the cron stays as a fallback.
+  # Kill switch = cancel the run (a cancelled run does not respawn) or disable the workflow.
+  respawn:
+    needs: [donate]
+    if: ${{ always() && !cancelled() && inputs.nodes == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch the next donation window
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sleep 20
+          gh workflow run donate.yml --ref "${{ github.ref_name }}" -R "${{ github.repository }}" && echo "next window dispatched" || echo "::warning::respawn dispatch failed - the cron fallback will pick it up"
