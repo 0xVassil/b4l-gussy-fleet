@@ -77,13 +77,15 @@ jobs:
           printf 'CC_AGENT_TOKEN=%s\n' "$TOK" > "$HOME/cc.env"
           mkdir -p "$HOME/bunnies"
           ME=$(printf '%s_gh%02d' "$LANE" $(( 5*R + 1 )))
-          get() { curl -sf -m 60 -H "Authorization: Bearer $TOK" -H "X-CC-Agent: $ME" \
+          get() { curl -sf -m 60 -H "Authorization: Bearer $2" -H "X-CC-Agent: $3" \
             "https://bull4life.com/cc/api/artifacts/read?rel=$1" | jq -r .body | base64 -d | tar xz -C "$HOME/bunnies"; }
-          if get "$LANE/current/kit/$LANE-kit.md" 2>/dev/null && [ -f "$HOME/bunnies/run_gh.sh" ]; then
+          # a lane token is scoped to its lane (bot's: own goal + bot/current/fleet/ only), so engine's kit is read with
+          # engine's token in THIS step only; the workers' cc.env holds the lane token
+          if get "$LANE/current/kit/$LANE-kit.md" "$TOK" "$ME" 2>/dev/null && [ -f "$HOME/bunnies/run_gh.sh" ]; then
             echo "kit: $LANE's own"
           else
             rm -rf "$HOME/bunnies"; mkdir -p "$HOME/bunnies"
-            get "engine/current/kit/bunny-kit.md"
+            get "engine/current/kit/bunny-kit.md" "$FLEET_TOK" engine_lab121
             echo "kit: engine's worker kit (research mode)"
           fi
           chmod +x "$HOME/bunnies/run_gh.sh"
