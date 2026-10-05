@@ -1,0 +1,164 @@
+# agentfleet.yml - free worker slots for site and bot on Gussy's account: 5 hosted runners x 5 workers per lane.
+# Admin 2026-10-05: "site agent 5 runners and bot agent 5 runners load them to full power ... join those agents to
+# your own fleets". Built by engine from enginelab.yml / gussybunnies.yml (same sandbox, same memory cap).
+# - Workers: site_gh01..site_gh25 and bot_gh01..bot_gh25. Runner R (0-4) of a lane hosts <lane>_gh(5R+1)..(5R+5).
+#   Each worker loop takes the todo milestones of its own goal g_<name> on the Command Center, one fresh
+#   `claude -p` per milestone. The lane's agent (site or bot) feeds those goals; engine feeds nothing here.
+# - Kit: the lane's own kit if it publishes one at <lane>/current/kit/<lane>-kit.md (a base64 tar.gz with a run_gh.sh
+#   that takes the worker name), else engine's worker kit (engine/current/kit/bunny-kit.md, research mode).
+# - CC token: secret SITE_CC_TOKEN / BOT_CC_TOKEN when the lane sets one, else engine's fleet token.
+# - The model is LOCKED to stealth/space-bunny-alpha: the OpenRouter key here is Gussy's, for stealth runs only.
+# - PUBLIC LOGS: nothing private is printed; workers write only to their own files; the summary prints counts only.
+name: agentfleet
+run-name: ${{ format('agentfleet {0} {1}', inputs.lane || 'site+bot', inputs.runners || 'all') }}
+on:
+  schedule:
+    - cron: '5 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: 'site or bot (empty = both)'
+        required: false
+        default: ''
+      runners:
+        description: 'JSON list of runner numbers 0-4 (empty = all five)'
+        required: false
+        default: ''
+      until:
+        description: 'epoch s; each lane runner re-dispatches itself after its window until then (empty = once)'
+        required: false
+        default: ''
+permissions:
+  contents: read
+  actions: write
+jobs:
+  fleet:
+    name: ${{ matrix.lane }} (${{ matrix.runner }})
+    concurrency:
+      group: agentfleet-${{ matrix.lane }}-r${{ matrix.runner }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: ${{ fromJSON(inputs.lane && format('["{0}"]', inputs.lane) || '["site", "bot"]') }}
+        runner: ${{ fromJSON(inputs.runners || '[0, 1, 2, 3, 4]') }}
+    steps:
+      - name: check inputs
+        env:
+          LANE: ${{ matrix.lane }}
+          R: ${{ matrix.runner }}
+        run: |
+          case "$LANE" in site|bot) ;; *) echo "::error::lane must be site or bot"; exit 1;; esac
+          if [ "$R" -lt 0 ] || [ "$R" -gt 4 ]; then echo "::error::runner must be 0-4"; exit 1; fi
+          echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: deps + claude cli
+        run: |
+          pip install --quiet numpy pandas matplotlib scipy requests
+          npm i -g @anthropic-ai/claude-code > /dev/null 2>&1 && claude --version
+      - name: fetch kit
+        env:
+          LANE: ${{ matrix.lane }}
+          R: ${{ matrix.runner }}
+          SITE_TOK: ${{ secrets.SITE_CC_TOKEN }}
+          BOT_TOK: ${{ secrets.BOT_CC_TOKEN }}
+          FLEET_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+        run: |
+          set -eu
+          umask 077
+          if [ "$LANE" = site ]; then TOK=${SITE_TOK:-$FLEET_TOK}; else TOK=${BOT_TOK:-$FLEET_TOK}; fi
+          printf 'CC_AGENT_TOKEN=%s\n' "$TOK" > "$HOME/cc.env"
+          mkdir -p "$HOME/bunnies"
+          ME=$(printf '%s_gh%02d' "$LANE" $(( 5*R + 1 )))
+          get() { curl -sf -m 60 -H "Authorization: Bearer $TOK" -H "X-CC-Agent: $ME" \
+            "https://bull4life.com/cc/api/artifacts/read?rel=$1" | jq -r .body | base64 -d | tar xz -C "$HOME/bunnies"; }
+          if get "$LANE/current/kit/$LANE-kit.md" 2>/dev/null && [ -f "$HOME/bunnies/run_gh.sh" ]; then
+            echo "kit: $LANE's own"
+          else
+            rm -rf "$HOME/bunnies"; mkdir -p "$HOME/bunnies"
+            get "engine/current/kit/bunny-kit.md"
+            echo "kit: engine's worker kit (research mode)"
+          fi
+          chmod +x "$HOME/bunnies/run_gh.sh"
+          echo "kit files: $(find "$HOME/bunnies" -type f | wc -l)"
+      - name: run 5 workers
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BUNNY_MODEL: stealth/space-bunny-alpha
+          LANE: ${{ matrix.lane }}
+          R: ${{ matrix.runner }}
+          UNTIL: ${{ inputs.until }}
+        run: |
+          wname() { printf '%s_gh%02d' "$LANE" $(( 5*R + $1 )); }
+          sudo useradd -m -s /bin/bash lab
+          sudo cp -a "$HOME/bunnies" "$HOME/cc.env" /home/lab/
+          sudo chown -R lab:lab /home/lab
+          export JOB_END=$(( $(date +%s) + 345*60 ))
+          if [ -n "$UNTIL" ] && [ "$UNTIL" -lt "$JOB_END" ]; then export JOB_END=$UNTIL; fi
+          if [ $(( JOB_T0 + 340*60 )) -lt "$JOB_END" ]; then export JOB_END=$(( JOB_T0 + 340*60 )); fi
+          MT=$(awk '/MemTotal/{print $2}' /proc/meminfo)
+          printf '[Slice]\nMemoryAccounting=yes\nMemoryHigh=%dK\nMemoryMax=%dK\nMemorySwapMax=0\n' $(( MT*14/16 )) $(( MT*15/16 )) \
+            | sudo tee /etc/systemd/system/b4llab.slice > /dev/null
+          sudo systemctl daemon-reload
+          ( while sleep 60; do echo "MEM $(date -u +%H:%M) used/total $(free -m | awk '/Mem/{print $3"/"$2}') load $(cut -d' ' -f1 /proc/loadavg) lab_procs $(pgrep -c -u lab)"; done ) &
+          MEMPID=$!
+          for i in 1 2 3 4 5; do
+            ( echo 1000 > /proc/self/oom_score_adj
+              exec sudo --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL systemd-run --scope -q \
+                --slice=b4llab.slice -- sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL \
+                env "PATH=$PATH" setsid -w nice -n 15 bash /home/lab/bunnies/run_gh.sh "$(wname $i)" ) > /dev/null 2>&1 &
+            sleep 20
+          done
+          sleep 10
+          SLICE_PROCS=$( (cat /sys/fs/cgroup/b4llab.slice/cgroup.procs /sys/fs/cgroup/b4llab.slice/*/cgroup.procs 2>/dev/null || true) | wc -l)
+          if [ "$SLICE_PROCS" -eq 0 ]; then
+            echo "::warning::b4llab.slice is empty, workers start WITHOUT the memory cap"
+            for i in 1 2 3 4 5; do
+              ( echo 1000 > /proc/self/oom_score_adj
+                exec sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL env "PATH=$PATH" \
+                  setsid -w nice -n 15 bash /home/lab/bunnies/run_gh.sh "$(wname $i)" ) > /dev/null 2>&1 &
+              sleep 20
+            done
+          else
+            echo "slice cap: $(cat /sys/fs/cgroup/b4llab.slice/memory.max) bytes, $SLICE_PROCS procs in it"
+          fi
+          echo "5 workers started: $(wname 1)..$(wname 5)"
+          # wait for the WORKERS only (the MEM logger never exits); a worker still in a task at JOB_END gets 3 min
+          while pgrep -u lab -f run_gh.sh > /dev/null && [ "$(date +%s)" -lt $(( JOB_END + 180 )) ]; do sleep 30; done
+          kill "$MEMPID" 2>/dev/null || true
+          echo "all workers ended"
+      - name: summary (counts only)
+        if: always()
+        run: |
+          for d in $(sudo sh -c 'ls -d /home/lab/bunnies/*_gh*/ 2>/dev/null'); do
+            sudo test -f "$d/logs/runner.log" || continue
+            echo "$(basename "$d"): starts=$(sudo grep -c ' start ' "$d/logs/runner.log") ends=$(sudo grep -c ' end ' "$d/logs/runner.log")"
+          done
+
+  respawn:
+    needs: [fleet]
+    if: ${{ always() && !cancelled() && inputs.until != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: next window (only before the deadline)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANES: ${{ inputs.lane || 'site bot' }}
+          RUNNERS: ${{ inputs.runners || '[0, 1, 2, 3, 4]' }}
+          UNTIL: ${{ inputs.until }}
+        run: |
+          if [ $(( UNTIL - $(date +%s) )) -lt 1800 ]; then echo "deadline reached, no respawn"; exit 0; fi
+          for l in $LANES; do
+            for r in $(echo "$RUNNERS" | jq -r '.[]'); do
+              gh workflow run agentfleet.yml -R "$GITHUB_REPOSITORY" -f lane="$l" -f runners="[$r]" -f until="$UNTIL" \
+                && echo "$l runner $r: next window dispatched" || echo "::warning::$l runner $r: respawn dispatch failed"
+            done
+          done
