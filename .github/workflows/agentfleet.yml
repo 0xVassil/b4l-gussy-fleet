@@ -90,6 +90,25 @@ jobs:
           fi
           chmod +x "$HOME/bunnies/run_gh.sh"
           echo "kit files: $(find "$HOME/bunnies" -type f | wc -l)"
+      # bot's PEX source (admin 10-05: bot resumes PEX with this fleet). It rides ONLY encrypted: orphan branch `pexkit`
+      # of engine's public repo, key = repo secret B4L_PEX_KIT_KEY (bot's own key). Decrypted into ~/pex on the runner,
+      # never into this repo; nothing of it is printed (public logs).
+      - uses: actions/checkout@v4
+        if: ${{ matrix.lane == 'bot' }}
+        with:
+          repository: dmanobela-glitch/-b4l-ai-cluster
+          ref: pexkit
+          path: payload_pex
+      - name: decrypt PEX (bot lane only)
+        if: ${{ matrix.lane == 'bot' }}
+        env:
+          PEX_KEY: ${{ secrets.B4L_PEX_KIT_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PEX_KEY" ]; then echo "no PEX key: skipped"; rm -rf payload_pex; exit 0; fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in payload_pex/pexkit.enc -pass "pass:$PEX_KEY" | tar -xz -C "$HOME"
+          rm -rf payload_pex
+          echo "pex files: $(find "$HOME/pex" -type f | wc -l)"
       - name: run 5 workers
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -101,6 +120,7 @@ jobs:
           wname() { printf '%s_gh%02d' "$LANE" $(( 5*R + $1 )); }
           sudo useradd -m -s /bin/bash lab
           sudo cp -a "$HOME/bunnies" "$HOME/cc.env" /home/lab/
+          if [ -d "$HOME/pex" ]; then sudo cp -a "$HOME/pex" /home/lab/; fi
           sudo chown -R lab:lab /home/lab
           export JOB_END=$(( $(date +%s) + 345*60 ))
           if [ -n "$UNTIL" ] && [ "$UNTIL" -lt "$JOB_END" ]; then export JOB_END=$UNTIL; fi
