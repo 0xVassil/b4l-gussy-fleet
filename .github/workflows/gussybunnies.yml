@@ -2,7 +2,8 @@
 # Built by engine 2026-10-04 on admin's order, from engine's own enginebunnies.yml (same rules, same memory cap).
 # - PUBLIC repo on purpose: GitHub-hosted minutes are free only for public repos on standard runners. Never make this
 #   repo private and never use a larger-runner label: either one starts billing.
-# - Each worker loop = one fresh `claude -p` per task row, model locked to a free OpenRouter model. No Anthropic
+# - Each worker loop = one fresh `claude -p` per task row, model locked to stealth/space-bunny-alpha (free) on
+#   Gussy's own OpenRouter key (admin 10-05: that key is for stealth runs only). No Anthropic
 #   credential exists here, so nothing can bill Claude.
 # - Runner R (0..3) hosts gussy_spacebunny(5R+1)..(5R+5). 5 per runner, not more: a 16 GB runner died at 8 workers.
 # - The job is capped at 350 min; JOB_END stops new rows ~5h45m in. The cron restarts it every 6 h; the concurrency
@@ -16,10 +17,6 @@ on:
     - cron: '50 */6 * * *'
   workflow_dispatch:
     inputs:
-      model:
-        description: 'free OpenRouter model id for the workers (empty = the kit default)'
-        required: false
-        default: ''
       runners:
         description: 'which runners to start, JSON list (default all four)'
         required: false
@@ -62,7 +59,8 @@ jobs:
       - name: run 5 bunnies
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          BUNNY_MODEL: ${{ inputs.model }}
+          # the OpenRouter key here is Gussy's own, for stealth runs only (admin 10-05): the model is locked
+          BUNNY_MODEL: stealth/space-bunny-alpha
           R: ${{ matrix.runner }}
         run: |
           # SANDBOX: workers run as the unprivileged user `lab` with no sudo, so no worker command can stop the runner.
@@ -77,6 +75,7 @@ jobs:
             | sudo tee /etc/systemd/system/b4llab.slice > /dev/null
           sudo systemctl daemon-reload
           ( while sleep 60; do echo "MEM $(date -u +%H:%M) used/total $(free -m | awk '/Mem/{print $3"/"$2}') load $(cut -d' ' -f1 /proc/loadavg) lab_procs $(pgrep -c -u lab)"; done ) &
+          MEMPID=$!
           start() {
             ( echo 1000 > /proc/self/oom_score_adj
               exec sudo --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL systemd-run --scope -q \
@@ -101,7 +100,10 @@ jobs:
             echo "slice cap: $(cat /sys/fs/cgroup/b4llab.slice/memory.max) bytes, $SLICE_PROCS procs in it"
           fi
           echo "5 workers started on runner $R"
-          wait
+          # wait for the WORKERS only: a bare `wait` also waited for the MEM logger above, which never exits, so every job
+          # ran to the 350-min cap, ended "cancelled" and never printed its summary
+          while pgrep -u lab -f run_gh.sh > /dev/null && [ "$(date +%s)" -lt $(( JOB_END + 180 )) ]; do sleep 30; done
+          kill "$MEMPID" 2>/dev/null || true
           echo "all workers ended"
       - name: summary (counts only)
         if: always()
