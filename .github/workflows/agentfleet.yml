@@ -7,7 +7,7 @@
 # - Kit: the lane's own kit if it publishes one at <lane>/current/kit/<lane>-kit.md (a base64 tar.gz with a run_gh.sh
 #   that takes the worker name), else engine's worker kit (engine/current/kit/bunny-kit.md, research mode).
 # - CC token: secret SITE_CC_TOKEN / BOT_CC_TOKEN when the lane sets one, else engine's fleet token.
-# - The model is LOCKED to stealth/space-bunny-alpha: the OpenRouter key here is Gussy's, for stealth runs only.
+# - Model: Space Bunny Free on OpenCode Zen through the OpenCode CLI, one OpenCode account per lane (10-05).
 # - PUBLIC LOGS: nothing private is printed; workers write only to their own files; the summary prints counts only.
 name: agentfleet
 run-name: ${{ format('agentfleet {0} {1}', inputs.lane || 'site+bot', inputs.runners || 'all') }}
@@ -63,6 +63,7 @@ jobs:
         run: |
           pip install --quiet numpy pandas matplotlib scipy requests
           npm i -g @anthropic-ai/claude-code > /dev/null 2>&1 && claude --version
+          npm i -g opencode-ai > /dev/null 2>&1 && echo "opencode $(opencode --version 2>&1 | head -1)"
       - name: fetch kit
         env:
           LANE: ${{ matrix.lane }}
@@ -111,8 +112,13 @@ jobs:
           echo "pex files: $(find "$HOME/pex" -type f | wc -l)"
       - name: run 5 workers
         env:
+          # admin 10-05: each lane has its OWN OpenCode Zen account (site = dmanobela, bot = bull4lifeb4l), so no lane
+          # eats another's ceiling. Space Bunny Free lives on OpenCode Zen; its free tier works only inside the OpenCode CLI.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          BUNNY_MODEL: stealth/space-bunny-alpha
+          BUNNY_HARNESS: opencode
+          BUNNY_MODEL: opencode/space-bunny-free
+          BUNNY_VARIANT: max
+          BUNNY_API_KEY: ${{ matrix.lane == 'bot' && secrets.BOT_OC_KEY || secrets.SITE_OC_KEY }}
           LANE: ${{ matrix.lane }}
           R: ${{ matrix.runner }}
           UNTIL: ${{ inputs.until }}
@@ -133,8 +139,8 @@ jobs:
           MEMPID=$!
           for i in 1 2 3 4 5; do
             ( echo 1000 > /proc/self/oom_score_adj
-              exec sudo --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL systemd-run --scope -q \
-                --slice=b4llab.slice -- sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL \
+              exec sudo --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY systemd-run --scope -q \
+                --slice=b4llab.slice -- sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY \
                 env "PATH=$PATH" setsid -w nice -n 15 bash /home/lab/bunnies/run_gh.sh "$(wname $i)" ) > /dev/null 2>&1 &
             sleep 20
           done
@@ -144,7 +150,7 @@ jobs:
             echo "::warning::b4llab.slice is empty, workers start WITHOUT the memory cap"
             for i in 1 2 3 4 5; do
               ( echo 1000 > /proc/self/oom_score_adj
-                exec sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL env "PATH=$PATH" \
+                exec sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY env "PATH=$PATH" \
                   setsid -w nice -n 15 bash /home/lab/bunnies/run_gh.sh "$(wname $i)" ) > /dev/null 2>&1 &
               sleep 20
             done
