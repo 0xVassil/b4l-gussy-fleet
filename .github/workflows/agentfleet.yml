@@ -12,8 +12,7 @@
 name: agentfleet
 run-name: ${{ format('agentfleet {0} {1}', inputs.lane || 'site+bot', inputs.runners || 'all') }}
 on:
-  schedule:
-    - cron: '5 */6 * * *'
+  # no cron while the lanes ramp one by one (10-05): each lane is dispatched on purpose, then respawns itself
   workflow_dispatch:
     inputs:
       lane:
