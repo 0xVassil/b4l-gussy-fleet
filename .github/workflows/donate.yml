@@ -63,10 +63,10 @@ jobs:
       # 10-04 admin: "replace donate runners in your runners keep only minimum runner to keep the b4l chain working so 1
       # optimize and 1 verify": 1 grid node here (optimize); verify = the chain's verify+mint lane. Freed slots -> engine + site agents.
       matrix:
-        # 10-05 admin: "raise our normal compute node". Gussy's account (Pro): engine's 10 runners there run grid nodes
-        # bull4life-gh3-1..10 while no stealth model exists (the model fleets on this repo are disabled). No secret is
+        # 10-05 admin: "raise our normal compute node". Gussy's account (Pro): 30 runners there run grid nodes (admin 10-05: "30 on gussy as well")
+        # bull4life-gh3-1..30 while no stealth model exists (the model fleets on this repo are disabled). No secret is
         # needed: the node is the public signed release from dmanobela-glitch/b4l-mint.
-        n: ${{ fromJSON(inputs.nodes || '[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]') }}   # was 16 grid runners on the SECOND account (Master 2026-09-07: 17 of 20 = 16 grid + 1 verify; the AI cluster is dispatch-only after the usefulness measurement)
+        n: ${{ fromJSON(inputs.nodes || '[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]') }}   # was 16 grid runners on the SECOND account (Master 2026-09-07: 17 of 20 = 16 grid + 1 verify; the AI cluster is dispatch-only after the usefulness measurement)
     steps:
       - name: Donate to the grid
         env:
