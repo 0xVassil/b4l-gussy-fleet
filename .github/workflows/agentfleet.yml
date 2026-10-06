@@ -172,7 +172,9 @@ jobs:
           wname() { printf '%s_gh%02d' "$LANE" $(( 5*R + $1 )); }
           sudo useradd -m -s /bin/bash lab
           sudo cp -a "$HOME/bunnies" "$HOME/cc.env" /home/lab/
-          if [ -d "$HOME/pex" ]; then sudo cp -a "$HOME/pex" /home/lab/; fi
+          # every decrypted code kit the workers read (10-06: botapp/suite/engineapp were decrypted into the RUNNER's
+          # home only, so all 7 Suite rows that needed them blocked with "~/suite does not exist")
+          for d in pex botapp suite engineapp; do if [ -d "$HOME/$d" ]; then sudo cp -a "$HOME/$d" /home/lab/; fi; done
           sudo chown -R lab:lab /home/lab
           export JOB_END=$(( $(date +%s) + 345*60 ))
           if [ -n "$UNTIL" ] && [ "$UNTIL" -lt "$JOB_END" ]; then export JOB_END=$UNTIL; fi
