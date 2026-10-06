@@ -131,6 +131,31 @@ jobs:
           git clone -q "$RUNNER_TEMP/botapp.bundle" "$HOME/botapp"
           rm -f "$RUNNER_TEMP/botapp.bundle"
           echo "botapp branches: $(git -C "$HOME/botapp" branch -r | grep -vc HEAD)"
+      # the Suite build (admin 10-06 via site: site's 10 workers build the app suite under engine). Engine's private
+      # repos b4l-suite + b4l-engine-app ride ONLY encrypted: orphan branch `suitekit` of engine's public repo
+      # (tools/suite_kit_publish.py), key = repo secret B4L_SUITE_KIT_KEY (engine's). Two git bundles -> ~/suite and
+      # ~/engineapp; only branch counts are printed (public logs).
+      - uses: actions/checkout@v4
+        if: ${{ matrix.lane == 'site' }}
+        with:
+          repository: dmanobela-glitch/-b4l-ai-cluster
+          ref: suitekit
+          path: payload_suite
+      - name: decrypt Suite (site lane only)
+        if: ${{ matrix.lane == 'site' }}
+        env:
+          B4L_SUITE_KIT_KEY: ${{ secrets.B4L_SUITE_KIT_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$B4L_SUITE_KIT_KEY" ]; then echo "no Suite key: skipped"; rm -rf payload_suite; exit 0; fi
+          d="$RUNNER_TEMP/suitekit"; mkdir -p "$d"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in payload_suite/suitekit.enc -out "$d/kit.tgz" -pass env:B4L_SUITE_KIT_KEY
+          tar -xzf "$d/kit.tgz" -C "$d"
+          rm -rf payload_suite "$HOME/suite" "$HOME/engineapp"
+          git clone -q "$d/suite.bundle" "$HOME/suite"
+          git clone -q "$d/engineapp.bundle" "$HOME/engineapp"
+          rm -rf "$d"
+          echo "suite branches: $(git -C "$HOME/suite" branch -r | grep -vc HEAD) | engineapp branches: $(git -C "$HOME/engineapp" branch -r | grep -vc HEAD)"
       - name: run 5 workers
         env:
           # admin 10-05: each lane has its OWN OpenCode Zen account (site = dmanobela, bot = bull4lifeb4l), so no lane
