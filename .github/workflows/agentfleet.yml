@@ -41,7 +41,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: ${{ fromJSON(inputs.lane && format('["{0}"]', inputs.lane) || '["site", "bot"]') }}
+        # site lane PARKED (site 10-06 15:39Z: Gussy is rebuilt from zero, the old lion files are dead): default = bot only
+        lane: ${{ fromJSON(inputs.lane && format('["{0}"]', inputs.lane) || '["bot"]') }}
         runner: ${{ fromJSON(inputs.runners || '[0, 1, 2, 3, 4]') }}
     steps:
       - name: check inputs
@@ -207,7 +208,16 @@ jobs:
           fi
           echo "5 workers started: $(wname 1)..$(wname 5)"
           # wait for the WORKERS only (the MEM logger never exits); a worker still in a task at JOB_END gets 3 min
-          while pgrep -u lab -f run_gh.sh > /dev/null && [ "$(date +%s)" -lt $(( JOB_END + 180 )) ]; do sleep 30; done
+          # STALL GUARD (engine 10-06, bot asked after two wedges): no worker log moved for 30 min = this window ends now,
+          # said in the log; the respawn job then starts a fresh window (dispatch with `until` so it does).
+          while pgrep -u lab -f run_gh.sh > /dev/null && [ "$(date +%s)" -lt $(( JOB_END + 180 )) ]; do
+            sleep 30
+            newest=$(sudo find /home/lab/bunnies -path '*/logs/*' -type f -mmin -30 -print -quit 2>/dev/null)
+            if [ -z "$newest" ] && [ $(( $(date +%s) - JOB_T0 )) -gt 2400 ]; then
+              echo "::warning::STALL: no worker log moved for 30 min - ending this window early so respawn starts a fresh one"
+              sudo pkill -u lab -f run_gh.sh || true; break
+            fi
+          done
           kill "$MEMPID" 2>/dev/null || true
           echo "all workers ended"
       - name: summary (counts only)
