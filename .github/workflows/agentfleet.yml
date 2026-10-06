@@ -109,6 +109,28 @@ jobs:
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in payload_pex/pexkit.enc -pass "pass:$PEX_KEY" | tar -xz -C "$HOME"
           rm -rf payload_pex
           echo "pex files: $(find "$HOME/pex" -type f | wc -l)"
+      # bot's Bot app source (admin 10-06: push the app build to the max; repo dmanobela-glitch/b4l-bot-app is bot's).
+      # Same rules as PEX: orphan branch `botappkit` of engine's public repo, key = repo secret B4L_BOTAPP_KIT_KEY (bot's
+      # own key). The payload is a GIT BUNDLE of every branch (rows must rebase), cloned into ~/botapp; only the branch
+      # count is printed (public logs).
+      - uses: actions/checkout@v4
+        if: ${{ matrix.lane == 'bot' }}
+        with:
+          repository: dmanobela-glitch/-b4l-ai-cluster
+          ref: botappkit
+          path: payload_botapp
+      - name: decrypt Bot app (bot lane only)
+        if: ${{ matrix.lane == 'bot' }}
+        env:
+          B4L_BOTAPP_KIT_KEY: ${{ secrets.B4L_BOTAPP_KIT_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$B4L_BOTAPP_KIT_KEY" ]; then echo "no Bot app key: skipped"; rm -rf payload_botapp; exit 0; fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in payload_botapp/botappkit.enc -out "$RUNNER_TEMP/botapp.bundle" -pass env:B4L_BOTAPP_KIT_KEY
+          rm -rf payload_botapp "$HOME/botapp"
+          git clone -q "$RUNNER_TEMP/botapp.bundle" "$HOME/botapp"
+          rm -f "$RUNNER_TEMP/botapp.bundle"
+          echo "botapp branches: $(git -C "$HOME/botapp" branch -r | grep -vc HEAD)"
       - name: run 5 workers
         env:
           # admin 10-05: each lane has its OWN OpenCode Zen account (site = dmanobela, bot = bull4lifeb4l), so no lane
