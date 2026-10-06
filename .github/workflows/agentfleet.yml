@@ -166,6 +166,10 @@ jobs:
           BUNNY_MODEL: ${{ matrix.lane == 'bot' && 'opencode/fledge-alpha-free' || 'opencode/space-bunny-free' }}   # 10-06: bot lane stalled on the space-bunny free limit; Fledge = stealth
           BUNNY_VARIANT: max
           BUNNY_API_KEY: ${{ matrix.lane == 'bot' && secrets.BOT_OC_KEY || secrets.SITE_OC_KEY }}
+          # admin 10-06: every worker shows '<model> @ <account key name>' in the CC (engine compute/fleet_kit/MODEL_ACCOUNTS.md);
+          # bot 10-06: BOT_OC_KEY = OPENCODE_KEY_BULL4LIFEB4L. run_gh.sh re-sets the label on a model rotation.
+          BUNNY_ACCOUNT: ${{ matrix.lane == 'bot' && 'OPENCODE_KEY_BULL4LIFEB4L' || 'SITE_OC_KEY (account not verified)' }}
+          BUNNY_MODEL_LABEL: ${{ matrix.lane == 'bot' && 'fledge-alpha-free @ OPENCODE_KEY_BULL4LIFEB4L' || 'space-bunny-free @ SITE_OC_KEY (account not verified)' }}
           LANE: ${{ matrix.lane }}
           R: ${{ matrix.runner }}
           UNTIL: ${{ inputs.until }}
@@ -188,8 +192,8 @@ jobs:
           MEMPID=$!
           for i in 1 2 3 4 5; do
             ( echo 1000 > /proc/self/oom_score_adj
-              exec sudo --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY systemd-run --scope -q \
-                --slice=b4llab.slice -- sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY \
+              exec sudo --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY,BUNNY_ACCOUNT,BUNNY_MODEL_LABEL systemd-run --scope -q \
+                --slice=b4llab.slice -- sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY,BUNNY_ACCOUNT,BUNNY_MODEL_LABEL \
                 env "PATH=$PATH" setsid -w nice -n 15 bash /home/lab/bunnies/run_gh.sh "$(wname $i)" ) > /dev/null 2>&1 &
             sleep 20
           done
@@ -199,7 +203,7 @@ jobs:
             echo "::warning::b4llab.slice is empty, workers start WITHOUT the memory cap"
             for i in 1 2 3 4 5; do
               ( echo 1000 > /proc/self/oom_score_adj
-                exec sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY env "PATH=$PATH" \
+                exec sudo -u lab -H --preserve-env=OPENROUTER_API_KEY,JOB_END,BUNNY_MODEL,BUNNY_HARNESS,BUNNY_VARIANT,BUNNY_API_KEY,BUNNY_ACCOUNT,BUNNY_MODEL_LABEL env "PATH=$PATH" \
                   setsid -w nice -n 15 bash /home/lab/bunnies/run_gh.sh "$(wname $i)" ) > /dev/null 2>&1 &
               sleep 20
             done
