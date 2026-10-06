@@ -162,7 +162,7 @@ jobs:
           # eats another's ceiling. Space Bunny Free lives on OpenCode Zen; its free tier works only inside the OpenCode CLI.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           BUNNY_HARNESS: opencode
-          BUNNY_MODEL: opencode/space-bunny-free
+          BUNNY_MODEL: ${{ matrix.lane == 'bot' && 'opencode/fledge-alpha-free' || 'opencode/space-bunny-free' }}   # 10-06: bot lane stalled on the space-bunny free limit; Fledge = stealth
           BUNNY_VARIANT: max
           BUNNY_API_KEY: ${{ matrix.lane == 'bot' && secrets.BOT_OC_KEY || secrets.SITE_OC_KEY }}
           LANE: ${{ matrix.lane }}
