@@ -51,6 +51,10 @@ jobs:
           live() {
             gh api "repos/$GITHUB_REPOSITORY/actions/workflows/enginelab.yml/runs?status=in_progress&per_page=50" \
               -q '.workflow_runs[].id' 2>/dev/null | grep -vx "$GITHUB_RUN_ID" | while read -r id; do
+                # __B4L_LAB_ONE_COPY_OLDER__ (engine 10-06): defer ONLY to an OLDER run. Two runs that both waited for
+                # each other deadlocked runners 1-3 for 70+ min (a waiting job is still "in_progress"); the older
+                # run now always wins and the newer one waits.
+                [ "$id" -lt "$GITHUB_RUN_ID" ] || continue
                 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?per_page=50" \
                   -q ".jobs[] | select(.status==\"in_progress\" and .name==\"lab ($RUNNER_NO)\") | .id" 2>/dev/null
               done | wc -l
