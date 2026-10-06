@@ -109,7 +109,7 @@ jobs:
           RUNNER_NO: ${{ matrix.runner }}
           # admin 10-05: Space Bunny Free on OpenCode Zen via the OpenCode CLI, on an OpenCode key (70% of workers = engine)
           BUNNY_HARNESS: opencode
-          BUNNY_MODEL: opencode/space-bunny-free
+          BUNNY_MODEL: opencode/fledge-alpha-free   # 10-06 engine: space-bunny-free saturated (LAB stalled ~14:00Z); Fledge = stealth
           BUNNY_VARIANT: max
           BUNNY_API_KEY: ${{ secrets.ENGINE_OC_KEY }}
           UNTIL: ${{ inputs.until }}
