@@ -1,0 +1,187 @@
+name: study_run
+
+# Engine's generic STUDY lane (SI-48, 2026-09-25). Master's rule: the laptop does no CPU/GPU work, so every
+# measurement, OFF-identity proof and visual-board data job runs here. Same encrypted-kit model as replay_build:
+# the laptop pushes kit.enc (AES-256, key = repo secret B4L_KIT_KEY) to the orphan `kit` branch and dispatches
+# this workflow pinned to that exact commit.
+#
+# PRIVACY, because this repo is PUBLIC:
+#   * the script path and its args travel INSIDE the encrypted kit (study.json), never in a public input;
+#   * the script's stdout/stderr go into the ENCRYPTED output, never to the public log;
+#   * the only artifact is out.enc (same key). The public log shows exit code, file count and size only.
+# MANIFEST.json (plaintext) holds only candle names and URLs, which are public market data.
+#
+# One runner per shard: the script reads B4L_STUDY_SHARD / B4L_STUDY_SHARDS to split its own work.
+# It writes results into $B4L_STUDY_OUT (and/or studies/out/); both come back.
+
+on:
+  workflow_dispatch:
+    inputs:
+      kit_ref:
+        description: "exact kit commit sha this run is pinned to"
+        required: true
+      shards:
+        description: "JSON list of shard labels, one runner each"
+        required: false
+        default: '["0"]'
+      extra_env:
+        description: 'EXPERIMENT ONLY: JSON {"B4L_X": "v"} exported before the script (B4L_* keys only)'
+        required: false
+        default: "{}"
+      timeout_min:
+        description: "hard limit for the script, minutes"
+        required: false
+        default: "120"
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+      n: ${{ steps.m.outputs.n }}
+    steps:
+      - id: m
+        env:
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re
+          s = json.loads(os.environ["SHARDS"] or '["0"]')
+          s = [str(x) for x in s if re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", str(x))]
+          print("matrix=" + json.dumps({"shard": s or ["0"]}))
+          print("n=" + str(len(s) or 1))
+          PY
+
+  run:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout payload
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.kit_ref }}
+
+      - name: Decrypt kit
+        env:
+          KIT_KEY: ${{ secrets.B4L_KIT_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$KIT_KEY" || { echo "::error::B4L_KIT_KEY not set on this repo"; exit 1; }
+          mkdir -p engine
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in kit.enc -out kit.tar -pass "pass:$KIT_KEY"
+          tar -xf kit.tar -C engine
+          rm -f kit.tar kit.enc
+          test -f engine/study.json || { echo "::error::kit carries no study.json - not a study kit"; exit 1; }
+          echo "kit files: $(find engine -type f | wc -l)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet numpy pandas matplotlib scipy ccxt   # ccxt: same warm-up cache-miss fetch path as hunt_trace (SB1 blocker 2026-09-30)
+
+      - name: Fetch candles
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          mkdir -p engine/candles
+          python3 - <<'PY'
+          import json, os, subprocess
+          m = json.load(open('MANIFEST.json'))
+          urls = dict(m.get('study_candles') or {})
+          if m.get('shard_candles'):               # per-shard lists given: this runner pulls ONLY its own candles
+              own = set(m['shard_candles'].get(os.environ.get('SHARD', '')) or [])
+              urls = {k: v for k, v in urls.items() if k in own}
+          for s, c in (m.get('candles') or {}).items():
+              if c and (m.get('urls') or {}).get(s):
+                  urls[c] = m['urls'][s]
+          for name, url in sorted(urls.items()):
+              subprocess.run(['curl', '-sSfL', '--retry', '3', '--retry-delay', '5', url, '-o', 'engine/candles/' + name], check=True)
+          print('candles fetched:', len(urls))
+          PY
+          echo "candle files: $(ls engine/candles | wc -l)"
+
+      - name: Apply experiment env
+        env:
+          EXTRA_ENV_JSON: ${{ inputs.extra_env }}
+        run: |
+          set -euo pipefail
+          python - <<'PYX' >> "$GITHUB_ENV"
+          import json, os, re
+          d = json.loads(os.environ.get('EXTRA_ENV_JSON') or '{}')
+          keys = []
+          for k, v in d.items():
+              if not re.fullmatch(r'B4L_[A-Z0-9_]+', k):
+                  raise SystemExit('refusing non-B4L experiment key: %r' % k)
+              print('%s=%s' % (k, v)); keys.append(k)
+          if keys:
+              print('B4L_EXTRA_REGIME=' + ','.join(sorted(keys)))
+          PYX
+          echo "experiment keys: $(grep -cE '^B4L_' "$GITHUB_ENV" || true)"
+
+      - name: Run study
+        working-directory: engine
+        env:
+          B4L_STUDY_SHARD: ${{ matrix.shard }}
+          B4L_STUDY_SHARDS: ${{ needs.plan.outputs.n }}
+          B4L_STUDY_TIMEOUT_MIN: ${{ inputs.timeout_min }}
+          PYTHONIOENCODING: utf-8
+          MPLBACKEND: Agg
+        run: |
+          set -uo pipefail
+          mkdir -p ../out/files
+          export B4L_STUDY_OUT="$(cd ../out/files && pwd)"
+          find studies/out -type f 2>/dev/null | sort > ../out/.pre_files || true
+          SCRIPT=$(python3 -c "import json;print(json.load(open('study.json'))['script'])")
+          python3 -c "import json;print(json.dumps(json.load(open('study.json')).get('args') or []))" > ../out/.args.json
+          T=$(( ${B4L_STUDY_TIMEOUT_MIN:-120} * 60 ))
+          # stdout/stderr go ONLY into the encrypted payload (public repo: nothing readable in this log)
+          python3 - "$SCRIPT" "$T" > ../out/log.txt 2>&1 <<'PY'
+          import json, subprocess, sys
+          script, t = sys.argv[1], int(sys.argv[2])
+          args = json.load(open('../out/.args.json'))
+          try:
+              rc = subprocess.run([sys.executable, script] + [str(a) for a in args], timeout=t).returncode
+          except subprocess.TimeoutExpired:
+              print('STUDY TIMEOUT after %d s' % t); rc = 124
+          open('../out/exit.txt', 'w').write(str(rc))
+          PY
+          RC=$(cat ../out/exit.txt 2>/dev/null || echo 99)
+          # new or changed files under studies/out come back too
+          mkdir -p ../out/studies_out
+          find studies/out -type f 2>/dev/null | sort > ../out/.post_files || true
+          comm -13 ../out/.pre_files ../out/.post_files | while read -r f; do mkdir -p "../out/studies_out/$(dirname "$f")"; cp "$f" "../out/studies_out/$f"; done
+          echo "study exit: $RC"
+          echo "output files: $(find ../out/files ../out/studies_out -type f | wc -l)"
+          echo "$RC" > ../study_rc
+
+      - name: Encrypt outputs
+        env:
+          KIT_KEY: ${{ secrets.B4L_KIT_KEY }}
+        run: |
+          set -euo pipefail
+          tar -cf out.tar -C out .
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in out.tar -out out.enc -pass "pass:$KIT_KEY"
+          rm -rf out out.tar
+          mkdir -p art && mv out.enc art/
+          ls -l art
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: study-${{ matrix.shard }}
+          path: art/
+          retention-days: 7
+
+      - name: Fail on a failed study
+        run: |
+          RC=$(cat study_rc 2>/dev/null || echo 99)
+          [ "$RC" = "0" ] || { echo "::error::study exited $RC (details in the encrypted log)"; exit 1; }
