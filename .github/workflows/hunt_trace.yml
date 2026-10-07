@@ -1,0 +1,234 @@
+name: hunt_trace
+
+# TRACED HUNTS on the offload lane — the Dream-RSI flywheel's only possible home.
+#
+# The donate/grid fleet cannot run this. Its runners "download the COMPILED node (no source)", so
+# B4L_HUNT_TRACE — which exists only in our source — never reaches them, and commits never reach a
+# frozen binary. This lane ships the encrypted SOURCE kit, so it can run instrumented searches the grid
+# structurally cannot. That is the whole reason this workflow exists rather than reusing the grid.
+#
+# It banks EVERY candidate eval (params + score + core metrics + generation) to hunter_trace.csv so a
+# replay simulator can learn which candidates deserve an expensive backtest. The hof it produces is a
+# REFINEMENT of the seeded one — the fleet never hunts from zero (that breaks prod).
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:     { description: "hunter variant key, e.g. xag_tight_low_lev_3m_counter", required: true }
+      population:  { description: "GA population", required: false, default: "24" }
+      generations: { description: "GA generations", required: false, default: "40" }
+      end_date:    { description: "B4L_END_DATE pin (must match the candle below)", required: true }
+      candle:      { description: "candle filename the runner must use", required: true }
+      candle_url:  { description: "absolute URL to fetch that candle from", required: true }
+      regime:      { description: "b4l_regime JSON the live book runs under - applied as env", required: true }
+      kit_ref:     { description: "exact kit commit this run is pinned to", required: false, default: kit }
+      # 2026-09-26 (SI-48): live signals on the forming bar use the 1m price (B4L_STUB_SIGNAL + B4L_STUB_1M). Without
+      # the 1m file every hunt bar fell back to the bar OPEN ("186400 of 186400 bars use the bar open as the stub"),
+      # measured to cost the live diamonds 10-20% (run 36252086912), so hunts optimised a world live never runs.
+      # Empty = the old behaviour, unchanged. B4L_STUB_1M itself travels in the regime (stamped on every row).
+      stub_candle:     { description: "optional 1m candle filename for the signal stub", required: false, default: "" }
+      stub_candle_url: { description: "absolute URL to fetch that 1m candle from", required: false, default: "" }
+      # 2026-10-01 (__B4L_FILL_OHLC__ for hunts): a world with a fill venue (allsides_xlot_funding_bybit) needs the
+      # venue's bars on the runner. Without them every backtest raised FileNotFoundError and the run still went green
+      # (disc3m_honest2 09-29, wtlen_joint 10-01). B4L_FILL_OHLC itself travels in the regime. Empty = unchanged.
+      fill_candle:     { description: "optional fill-venue candle filename (B4L_FILL_OHLC)", required: false, default: "" }
+      fill_candle_url: { description: "absolute URL to fetch that fill candle from", required: false, default: "" }
+
+permissions:
+  contents: read
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.kit_ref }}
+
+      - name: Decrypt kit
+        env:
+          KIT_KEY: ${{ secrets.B4L_KIT_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$KIT_KEY" || { echo "::error::B4L_KIT_KEY not set"; exit 1; }
+          mkdir -p engine
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in kit.enc -out kit.tar -pass "pass:$KIT_KEY"
+          tar -xf kit.tar -C engine
+          rm -f kit.tar kit.enc
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Install deps
+        run: pip install --quiet numpy pandas ccxt   # ccxt: engine warm-up (_bt_head_check.py) needs it to fetch on a candle CACHE MISS; without it the job sys.exit's "ERROR: pip install ccxt" 16s in (SB1 blocker 2026-09-30)
+
+      - name: Fetch pinned candle
+        run: |
+          set -euo pipefail
+          mkdir -p engine/candles
+          curl -sSfL --retry 3 --retry-delay 5 "${{ inputs.candle_url }}" -o "engine/candles/${{ inputs.candle }}"
+          ls -l "engine/candles/${{ inputs.candle }}"
+
+      - name: Fetch the 1m stub candle
+        if: ${{ inputs.stub_candle != '' }}
+        run: |
+          set -euo pipefail
+          curl -sSfL --retry 3 --retry-delay 5 "${{ inputs.stub_candle_url }}" -o "engine/candles/${{ inputs.stub_candle }}"
+          ls -l "engine/candles/${{ inputs.stub_candle }}"
+
+      - name: Fetch the fill-venue candle
+        if: ${{ inputs.fill_candle != '' }}
+        run: |
+          set -euo pipefail
+          curl -sSfL --retry 3 --retry-delay 5 "${{ inputs.fill_candle_url }}" -o "engine/candles/${{ inputs.fill_candle }}"
+          ls -l "engine/candles/${{ inputs.fill_candle }}"
+
+      - name: Seed the hunt from the shipped hof
+        working-directory: engine
+        run: |
+          set -euo pipefail
+          V="${{ inputs.variant }}"
+          mkdir -p hunts_out/"$V"
+          # The hunter BLOCKS for up to 60 min on "[GUARD] 0 diamonds ... waiting for the optimizer" when
+          # the output dir has no hof — it looks like a hang (~0 CPU, empty log). Seeding the shipped hof
+          # both satisfies the guard and enforces the fleet-REFINES rule: never hunt from zero.
+          SRC=$(find strategies/wavetrend -path "*/hunts/$V/hunter_hof.csv" | head -1)
+          test -n "$SRC" || { echo "::error::no seed hof shipped for $V"; exit 1; }
+          cp "$SRC" hunts_out/"$V"/hunter_hof.csv
+          wc -l hunts_out/"$V"/hunter_hof.csv
+
+      - name: Apply the book's regime
+        working-directory: engine
+        run: |
+          set -euo pipefail
+          # WITHOUT THIS the hunt runs under AMBIENT engine settings and its rows are not comparable to
+          # anything we hold - measured on run 35378087061, which pinned only the WINDOW and produced 551
+          # rows under different physics. Same half-fix shape as the master replay: the visible pin was
+          # there, the one that shapes the numbers was not.
+          python - <<'PY' >> "$GITHUB_ENV"
+          import json, os
+          for k, v in json.loads(os.environ['REGIME_JSON']).items():
+              print(f'{k}={v}')
+          PY
+        env:
+          REGIME_JSON: ${{ inputs.regime }}
+
+      - name: Traced hunt
+        working-directory: engine
+        env:
+          B4L_HUNT_TRACE: "1"
+          B4L_END_DATE: ${{ inputs.end_date }}
+        run: |
+          set -euo pipefail
+          echo "regime in effect:"; env | grep -E '^B4L_' | sort
+          # -u so the guard/progress lines are visible live instead of sitting in a buffer
+          # --seed-csv IS THE REFINEMENT. Without it the GA starts from a RANDOM population and merely
+          # ARCHIVES the shipped hof, so the hunt lands WORSE than its own incumbent - measured:
+          # xag best 15.76 against an incumbent 53.13, near 80.13 against 88.18, under identical regime
+          # and data_end. The tell is gen 0 opening at best=-1000000 instead of near the incumbent.
+          # The variant's declared default_seed_csv (an optimizer results CSV) does not exist even on
+          # the laptop, so nothing was seeding these hunts at all. The hof carries all 70 search-space
+          # params + score, so it IS a valid seed set - and seeding FROM it is exactly the documented
+          # rule that the fleet REFINES and never hunts from zero.
+          # PREFER THE COORDINATOR'S SEED SET - the same one the grid nodes pull (node.py fetches
+          # /seeds/<target_id>.csv). VERIFIED schema-identical to the hof (113 cols, all 70 search-space
+          # params, score present) and RICHER: 46 rows vs the hof's 15. Using it means the fleet hunt and
+          # the grid refine from ONE source of truth instead of two that can drift apart.
+          # Falls back to the shipped hof if the coordinator is unreachable - a seeded hunt from a
+          # smaller set still beats an unseeded one, which is what we had.
+          SEED="hunts_out/${{ inputs.variant }}/hunter_hof.csv"
+          if curl -sSfL --max-time 60 \
+               "https://compute.bull4life.com/seeds/${{ inputs.variant }}.csv" -o coord_seed.csv \
+             && [ -s coord_seed.csv ]; then
+            SEED="$(pwd)/coord_seed.csv"
+            echo "seeding from the COORDINATOR: $(( $(wc -l < coord_seed.csv) - 1 )) rows"
+          else
+            echo "coordinator seed unavailable - falling back to the shipped hof"
+          fi
+          python -u hunter/bull4life_hunter.py \
+            --variant "${{ inputs.variant }}" \
+            --population "${{ inputs.population }}" \
+            --generations "${{ inputs.generations }}" \
+            --seed-csv "$SEED" \
+            --cores 2 --no-auto-render \
+            --output-dir hunts_out 2>&1 | tee hunt.log
+          # PROVE the seeds took: gen 0 must not open at the reject sentinel. If it does, the hunt is
+          # exploring from zero again and its output must not be trusted as a refinement.
+          if grep -qE "^Gen +0 +best=-1000000" hunt.log; then
+            echo "::error::gen 0 opened at the reject sentinel - seeds did NOT enter the population"
+            exit 1
+          fi
+          if grep -q "\[GUARD\] 0 diamonds" hunt.log; then
+            echo "::error::hunter blocked on the no-diamonds guard - the seed hof did not take"; exit 1
+          fi
+
+      - name: Stamp the banked rows
+        working-directory: engine
+        run: |
+          set -euo pipefail
+          # Diamonds are stamped at BANKING time by the node pipeline; a fleet hunt never touches node.py,
+          # so its rows come back with no b4l_regime and data_end='None' and the marketing path rightly
+          # refuses them (measured: run 35378087061). fleet_regime.stamp() derives the regime from the
+          # ENV we just applied, so this records what actually ran - it does not invent anything.
+          python - <<'PY'
+          import os, sys, json
+          import pandas as pd
+          sys.path.insert(0, 'compute')
+          import fleet_regime as FR
+          v = os.environ['VARIANT']; p = f'hunts_out/{v}/hunter_hof.csv'
+          df = pd.read_csv(p, engine='python', on_bad_lines='skip')
+          rows = [FR.stamp(dict(r)) for r in df.to_dict('records')]
+          end = os.environ.get('B4L_END_DATE', '')
+          for r in rows:
+              if end:
+                  r['data_end'] = end
+          out = pd.DataFrame(rows)
+          out.to_csv(p, index=False)
+          good = sum(1 for r in rows if isinstance(r.get('b4l_regime'), str) and r['b4l_regime'].strip())
+          print(f'stamped {good}/{len(rows)} rows  data_end={end}')
+          if good != len(rows):
+              sys.exit('::error::some rows were not stamped')
+          PY
+        env:
+          VARIANT: ${{ inputs.variant }}
+          B4L_END_DATE: ${{ inputs.end_date }}
+
+      - name: Collect
+        run: |
+          set -euo pipefail
+          V="${{ inputs.variant }}"
+          D="engine/hunts_out/$V"
+          test -s "$D/hunter_trace.csv" || { echo "::error::no hunter_trace.csv produced"; exit 1; }
+          mkdir -p out
+          cp "$D/hunter_trace.csv" out/
+          [ -s "$D/hunter_hof.csv" ] && cp "$D/hunter_hof.csv" out/ || true
+          [ -s engine/hunt.log ] && tail -200 engine/hunt.log > out/hunt_tail.log || true
+          echo "trace rows: $(( $(wc -l < out/hunter_trace.csv) - 1 ))"
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hunt-${{ inputs.variant }}
+          path: out/
+          retention-days: 14
+
+      # __B4L_HUNT_DEGENERATE_GATE__ (2026-10-01; studies/hunt_harvest_guard.py's rule, inlined so it needs nothing from
+      # the kit): a hunt in which NO individual ever scored above the invalid sentinel (-1e8) found nothing; its hof holds
+      # only the banked seeds. That run must go RED, never green (disc3m_honest2 09-29 and wtlen_joint 10-01 went green
+      # with every backtest raising). Runs after the upload so the failed hunt's files stay readable.
+      - name: Gate - the hunt evaluated something
+        run: |
+          python - <<'PY'
+          import csv, sys
+          s = []
+          for r in csv.DictReader(open('out/hunter_trace.csv', newline='')):
+              try:
+                  s.append(float(r['score']))
+              except (KeyError, TypeError, ValueError):
+                  pass
+          ok = sum(1 for v in s if v > -1e8)
+          print('trace scores: %d, valid %d, best %s' % (len(s), ok, max(s) if s else None))
+          if not ok:
+              sys.exit('::error::DEGENERATE hunt: no individual evaluated (see hunt_tail.log)')
+          PY
