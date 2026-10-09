@@ -1,0 +1,15 @@
+{
+ "slugs": [
+  "ena-1m-wide"
+ ],
+ "files": 98,
+ "candles": {
+  "ena-1m-wide": "ena_1m_2023-06-01_2024-12-31.csv"
+ },
+ "urls": {
+  "ena-1m-wide": "https://github.com/dmanobela-glitch/b4l-fleet-compute/releases/download/candles/ena_1m_2023-06-01_2024-12-31.csv"
+ },
+ "study_candles": {},
+ "shard_candles": {},
+ "built": "2026-10-09T08:08:07Z"
+}
