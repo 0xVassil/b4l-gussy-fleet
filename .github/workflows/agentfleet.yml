@@ -240,6 +240,9 @@ jobs:
           ORCA_API_KEY: ${{ secrets.ORCA_API_KEY }}
           VERCEL_AI_GATEWAY_KEY: ${{ secrets.VERCEL_AI_GATEWAY_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_KEY_1: ${{ secrets.OR_KEY_1 }}
+          OPENROUTER_KEY_2: ${{ secrets.OR_KEY_2 }}
+          OPENROUTER_KEY_3: ${{ secrets.OR_KEY_3 }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           R: ${{ matrix.runner }}
           UNTIL: ${{ inputs.until }}
