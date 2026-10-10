@@ -50,7 +50,7 @@ jobs:
           LANE: ${{ matrix.lane }}
           R: ${{ matrix.runner }}
         run: |
-          case "$LANE" in site|bot) ;; *) echo "::error::lane must be site or bot"; exit 1;; esac
+          case "$LANE" in site|bot|lanes) ;; *) echo "::error::lane must be site, bot or lanes"; exit 1;; esac
           if [ "$R" -lt 0 ] || [ "$R" -gt 4 ]; then echo "::error::runner must be 0-4"; exit 1; fi
           echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
@@ -82,14 +82,18 @@ jobs:
             "https://bull4life.com/cc/api/artifacts/read?rel=$1" | jq -r .body | base64 -d | tar xz -C "$HOME/bunnies"; }
           # a lane token is scoped to its lane (bot's: own goal + bot/current/fleet/ only), so engine's kit is read with
           # engine's token in THIS step only; the workers' cc.env holds the lane token
-          if get "$LANE/current/kit/$LANE-kit.md" "$TOK" "$ME" 2>/dev/null && [ -f "$HOME/bunnies/run_gh.sh" ]; then
+          # lanes (engine 10-10: the 10-lane free loop moved off the laptop): engine's private kit, read with engine's token
+          if [ "$LANE" = lanes ]; then
+            get "engine/current/kit/lanes-kit.md" "$FLEET_TOK" engine
+            echo "kit: lanes (engine)"
+          elif get "$LANE/current/kit/$LANE-kit.md" "$TOK" "$ME" 2>/dev/null && [ -f "$HOME/bunnies/run_gh.sh" ]; then
             echo "kit: $LANE's own"
           else
             rm -rf "$HOME/bunnies"; mkdir -p "$HOME/bunnies"
             get "engine/current/kit/bunny-kit.md" "$FLEET_TOK" engine_lab121
             echo "kit: engine's worker kit (research mode)"
           fi
-          chmod +x "$HOME/bunnies/run_gh.sh"
+          chmod +x "$HOME/bunnies/"*.sh
           echo "kit files: $(find "$HOME/bunnies" -type f | wc -l)"
       # bot's PEX source (admin 10-05: bot resumes PEX with this fleet). It rides ONLY encrypted: orphan branch `pexkit`
       # of engine's public repo, key = repo secret B4L_PEX_KIT_KEY (bot's own key). Decrypted into ~/pex on the runner,
@@ -158,6 +162,7 @@ jobs:
           rm -rf "$d"
           echo "suite branches: $(git -C "$HOME/suite" branch -r | grep -vc HEAD) | engineapp branches: $(git -C "$HOME/engineapp" branch -r | grep -vc HEAD)"
       - name: run 5 workers
+        if: ${{ matrix.lane != 'lanes' }}
         env:
           # admin 10-05: each lane has its OWN OpenCode Zen account (site = dmanobela, bot = bull4lifeb4l), so no lane
           # eats another's ceiling. Space Bunny Free lives on OpenCode Zen; its free tier works only inside the OpenCode CLI.
@@ -224,6 +229,24 @@ jobs:
           done
           kill "$MEMPID" 2>/dev/null || true
           echo "all workers ended"
+      - name: run the 10-lane loop (lanes only)
+        if: ${{ matrix.lane == 'lanes' }}
+        env:
+          # engine 10-10: one runner = one copy of lane_loop.py on its own batches; 3 OpenCode Zen accounts + Orca + Vercel
+          # + OpenRouter, keys from secrets only; state saved to the CC every 20 min and at the end, restored next window
+          OC1: ${{ secrets.ENGINE_OC_KEY }}
+          OC2: ${{ secrets.SITE_OC_KEY }}
+          OC3: ${{ secrets.BOT_OC_KEY }}
+          ORCA_API_KEY: ${{ secrets.ORCA_API_KEY }}
+          VERCEL_AI_GATEWAY_KEY: ${{ secrets.VERCEL_AI_GATEWAY_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+          R: ${{ matrix.runner }}
+          UNTIL: ${{ inputs.until }}
+        run: |
+          export JOB_END=$(( JOB_T0 + 340*60 ))
+          if [ -n "$UNTIL" ] && [ "$UNTIL" -lt "$JOB_END" ]; then export JOB_END=$UNTIL; fi
+          bash "$HOME/bunnies/run_lanes.sh" "$R"
       - name: summary (counts only)
         if: always()
         run: |
