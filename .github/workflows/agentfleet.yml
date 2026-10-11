@@ -50,7 +50,7 @@ jobs:
           LANE: ${{ matrix.lane }}
           R: ${{ matrix.runner }}
         run: |
-          case "$LANE" in site|bot|lanes) ;; *) echo "::error::lane must be site, bot or lanes"; exit 1;; esac
+          case "$LANE" in site|bot|lanes|fetch) ;; *) echo "::error::lane must be site, bot, lanes or fetch"; exit 1;; esac
           if [ "$R" -lt 0 ] || [ "$R" -gt 4 ]; then echo "::error::runner must be 0-4"; exit 1; fi
           echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
@@ -86,6 +86,10 @@ jobs:
           if [ "$LANE" = lanes ]; then
             get "engine/current/kit/lanes-kit.md" "$FLEET_TOK" engine
             echo "kit: lanes (engine)"
+          # fetch (engine 10-11, workflow 2 "Fetch info + skills"): its own kit, its own folder, its own state
+          elif [ "$LANE" = fetch ]; then
+            get "engine/current/kit/fetch-kit.md" "$FLEET_TOK" engine
+            echo "kit: fetch (engine)"
           elif get "$LANE/current/kit/$LANE-kit.md" "$TOK" "$ME" 2>/dev/null && [ -f "$HOME/bunnies/run_gh.sh" ]; then
             echo "kit: $LANE's own"
           else
@@ -162,7 +166,7 @@ jobs:
           rm -rf "$d"
           echo "suite branches: $(git -C "$HOME/suite" branch -r | grep -vc HEAD) | engineapp branches: $(git -C "$HOME/engineapp" branch -r | grep -vc HEAD)"
       - name: run 5 workers
-        if: ${{ matrix.lane != 'lanes' }}
+        if: ${{ matrix.lane != 'lanes' && matrix.lane != 'fetch' }}
         env:
           # admin 10-05: each lane has its OWN OpenCode Zen account (site = dmanobela, bot = bull4lifeb4l), so no lane
           # eats another's ceiling. Space Bunny Free lives on OpenCode Zen; its free tier works only inside the OpenCode CLI.
@@ -251,6 +255,30 @@ jobs:
           export JOB_END=$(( JOB_T0 + 340*60 ))
           if [ -n "$UNTIL" ] && [ "$UNTIL" -lt "$JOB_END" ]; then export JOB_END=$UNTIL; fi
           bash "$HOME/bunnies/run_lanes.sh" "$R"
+      - name: run the fetch loop (fetch only)
+        if: ${{ matrix.lane == 'fetch' }}
+        env:
+          # engine 10-11, workflow 2: one runner = one copy of fetch_loop.py on its own batches. The free models are
+          # called through the same pools and keys as the lanes; the facts come from each place's own public search.
+          # GITHUB_TOKEN is this job's own token (read only): it raises api.github.com's search limits.
+          OC1: ${{ secrets.ENGINE_OC_KEY }}
+          OC2: ${{ secrets.SITE_OC_KEY }}
+          OC3: ${{ secrets.BOT_OC_KEY }}
+          ORCA_API_KEY: ${{ secrets.ORCA_API_KEY }}
+          VERCEL_AI_GATEWAY_KEY: ${{ secrets.VERCEL_AI_GATEWAY_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_KEY_1: ${{ secrets.OR_KEY_1 }}
+          OPENROUTER_KEY_2: ${{ secrets.OR_KEY_2 }}
+          OPENROUTER_KEY_3: ${{ secrets.OR_KEY_3 }}
+          OPENROUTER_KEY_4: ${{ secrets.OR_KEY_4 }}
+          CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          R: ${{ matrix.runner }}
+          UNTIL: ${{ inputs.until }}
+        run: |
+          export JOB_END=$(( JOB_T0 + 340*60 ))
+          if [ -n "$UNTIL" ] && [ "$UNTIL" -lt "$JOB_END" ]; then export JOB_END=$UNTIL; fi
+          bash "$HOME/bunnies/run_fetch.sh" "$R"
       - name: summary (counts only)
         if: always()
         run: |
