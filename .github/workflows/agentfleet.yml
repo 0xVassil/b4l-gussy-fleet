@@ -251,6 +251,9 @@ jobs:
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           R: ${{ matrix.runner }}
           UNTIL: ${{ inputs.until }}
+          # engine 10-11: guest workflows run on this runner's own agents (multi_loop.py); the fetch guest searches
+          # GitHub with the job's own read-only token
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           export JOB_END=$(( JOB_T0 + 340*60 ))
           if [ -n "$UNTIL" ] && [ "$UNTIL" -lt "$JOB_END" ]; then export JOB_END=$UNTIL; fi
