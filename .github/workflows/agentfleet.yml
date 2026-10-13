@@ -170,7 +170,7 @@ jobs:
         env:
           # admin 10-05: each lane has its OWN OpenCode Zen account (site = dmanobela, bot = bull4lifeb4l), so no lane
           # eats another's ceiling. Space Bunny Free lives on OpenCode Zen; its free tier works only inside the OpenCode CLI.
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3) && secrets.OR_KEY_DMANOBELA) || ((matrix.runner == 1 || matrix.runner == 4) && secrets.OR_KEY_BULL4LIFEB4L) || secrets.OR_KEY_DMANOBLEAGB }}   # helper 10-13 (engine 51093): the runner's own named key, same map as the lanes step; unnamed secret kept until one site/bot run is green
           BUNNY_HARNESS: opencode
           BUNNY_MODEL: ${{ matrix.lane == 'bot' && 'opencode/fledge-alpha-free' || 'opencode/space-bunny-free' }}   # 10-06: bot lane stalled on the space-bunny free limit; Fledge = stealth
           BUNNY_VARIANT: max
