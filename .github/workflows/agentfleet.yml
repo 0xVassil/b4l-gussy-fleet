@@ -280,10 +280,9 @@ jobs:
           ORCA_API_KEY: ${{ secrets.ORCA_API_KEY }}
           VERCEL_AI_GATEWAY_KEY: ${{ secrets.VERCEL_AI_GATEWAY_KEY }}
           OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3) && secrets.OR_KEY_DMANOBELA) || ((matrix.runner == 1 || matrix.runner == 4) && secrets.OR_KEY_BULL4LIFEB4L) || secrets.OR_KEY_DMANOBLEAGB }}   # helper 10-13 (engine 51084): the runner's own named key, r0/r3 DMANOBELA, r1/r4 BULL4LIFEB4L, r2 DMANOBLEAGB
-          OPENROUTER_KEY_1: ${{ secrets.OR_KEY_1 }}
-          OPENROUTER_KEY_2: ${{ secrets.OR_KEY_2 }}
-          OPENROUTER_KEY_3: ${{ secrets.OR_KEY_3 }}
-          OPENROUTER_KEY_4: ${{ secrets.OR_KEY_4 }}
+          # engine 10-13 (helper 51271): ONE OpenRouter key on a runner, its own account's, read by the account's name.
+          # Before: the four numbered secrets OR_KEY_1..4, every account's key on every fetch runner.
+          OPENROUTER_KEY_1: ${{ ((matrix.runner == 0 || matrix.runner == 3) && secrets.OR_KEY_DMANOBELA) || ((matrix.runner == 1 || matrix.runner == 4) && secrets.OR_KEY_BULL4LIFEB4L) || secrets.OR_KEY_DMANOBLEAGB }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
           R: ${{ matrix.runner }}

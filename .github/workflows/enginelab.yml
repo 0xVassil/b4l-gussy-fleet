@@ -105,7 +105,7 @@ jobs:
           echo "kit files: $(find "$HOME/bunnies" -type f | wc -l)"
       - name: run 4 lab workers
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OR_KEY_GUSSY }}
           RUNNER_NO: ${{ matrix.runner }}
           # admin 10-05: Space Bunny Free on OpenCode Zen via the OpenCode CLI, on an OpenCode key (70% of workers = engine)
           BUNNY_HARNESS: opencode
