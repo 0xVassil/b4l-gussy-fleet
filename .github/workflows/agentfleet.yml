@@ -1,7 +1,7 @@
 # agentfleet.yml - free worker slots for site and bot on Gussy's account: 5 hosted runners x 5 workers per lane.
 # Admin 2026-10-05: "site agent 5 runners and bot agent 5 runners load them to full power ... join those agents to
 # your own fleets". Built by engine from enginelab.yml / gussybunnies.yml (same sandbox, same memory cap).
-# - Workers: site_gh01..site_gh25 and bot_gh01..bot_gh25. Runner R (0-4) of a lane hosts <lane>_gh(5R+1)..(5R+5).
+# - Workers: site_gh01..site_gh30 and bot_gh01..bot_gh30. Runner R (0-5) of a lane hosts <lane>_gh(5R+1)..(5R+5).
 #   Each worker loop takes the todo milestones of its own goal g_<name> on the Command Center, one fresh
 #   `claude -p` per milestone. The lane's agent (site or bot) feeds those goals; engine feeds nothing here.
 # - Kit: the lane's own kit if it publishes one at <lane>/current/kit/<lane>-kit.md (a base64 tar.gz with a run_gh.sh
@@ -20,7 +20,7 @@ on:
         required: false
         default: ''
       runners:
-        description: 'JSON list of runner numbers 0-4 (empty = all five)'
+        description: 'JSON list of runner numbers 0-5 (empty = the default five, 0-4)'
         required: false
         default: ''
       until:
@@ -51,7 +51,7 @@ jobs:
           R: ${{ matrix.runner }}
         run: |
           case "$LANE" in site|bot|lanes|fetch) ;; *) echo "::error::lane must be site, bot, lanes or fetch"; exit 1;; esac
-          if [ "$R" -lt 0 ] || [ "$R" -gt 4 ]; then echo "::error::runner must be 0-4"; exit 1; fi
+          if [ "$R" -lt 0 ] || [ "$R" -gt 5 ]; then echo "::error::runner must be 0-5"; exit 1; fi
           echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
