@@ -301,7 +301,8 @@ jobs:
 
   # helper 10-13 (engine 51159: site's remote-agent task is a go). OFF unless talker = only. ONE up-only worker, named
   # site_talk_r5, through site's screen client: no --take-keys, no --restore-memory, nothing comes down. Its hub key is
-  # SITE_CC_TOKEN (the lead's own key, --as site); its model key is NOUS_KEY_DMANOBELA (zero-price allow-list only).
+  # TALKER_CC_TOKEN = the worker-scoped token of site_talk_r5 (cc_token.py issue, engine 51154 point 1); its model key is
+  # NOUS_KEY_DMANOBELA (zero-price allow-list only). Not site's lead key: the worker proves only its own name.
   # The engine token is read in the kit step ONLY, as the lanes kit step does. 45 minutes, then it stops itself.
   talker:
     name: talker (site_talk_r5)
@@ -327,14 +328,14 @@ jobs:
       - name: talk (up only, 45 minutes)
         env:
           CC_BASE: https://bull4life.com/cc
-          CC_AGENT_TOKEN: ${{ secrets.SITE_CC_TOKEN }}
+          CC_AGENT_TOKEN: ${{ secrets.TALKER_CC_TOKEN }}
           NOUS_KEY_DMANOBELA: ${{ secrets.NOUS_KEY_DMANOBELA }}
           TALK_MINUTES: '45'
         run: |
           set -eu
           cd "$HOME/talker_kit/talker"
           export TALK_MEMORY="$HOME/talker_kit/memory"
-          python -u b4l_agent_screen.py --name site_talk_r5 --as site --memory "$TALK_MEMORY" -- python -u talk_agent.py
+          python -u b4l_agent_screen.py --name site_talk_r5 --memory "$TALK_MEMORY" -- python -u talk_agent.py
 
   respawn:
     needs: [fleet]
