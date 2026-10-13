@@ -241,22 +241,21 @@ jobs:
       - name: run the 10-lane loop (lanes only)
         if: ${{ matrix.lane == 'lanes' }}
         env:
-          # engine 10-10: one runner = one copy of lane_loop.py on its own batches; 3 OpenCode Zen accounts + Orca + Vercel
-          # + OpenRouter, keys from secrets only; state saved to the CC every 20 min and at the end, restored next window
-          OC1: ${{ secrets.ENGINE_OC_KEY }}
-          OC2: ${{ secrets.SITE_OC_KEY }}
-          OC3: ${{ secrets.BOT_OC_KEY }}
-          ORCA_API_KEY: ${{ secrets.ORCA_API_KEY }}
-          VERCEL_AI_GATEWAY_KEY: ${{ secrets.VERCEL_AI_GATEWAY_KEY }}
-          OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3) && secrets.OR_KEY_DMANOBELA) || ((matrix.runner == 1 || matrix.runner == 4) && secrets.OR_KEY_BULL4LIFEB4L) || secrets.OR_KEY_DMANOBLEAGB }}   # helper 10-13 (engine 51084): the runner's own named key, r0/r3 DMANOBELA, r1/r4 BULL4LIFEB4L, r2 DMANOBLEAGB
-          OPENROUTER_KEY_1: ${{ secrets.OR_KEY_1 }}
-          OPENROUTER_KEY_2: ${{ secrets.OR_KEY_2 }}
-          OPENROUTER_KEY_3: ${{ secrets.OR_KEY_3 }}
-          OPENROUTER_KEY_4: ${{ secrets.OR_KEY_4 }}
-          OPENROUTER_KEY_5: ${{ secrets.OR_KEY_DMANOBELA }}      # helper 10-13 (engine 51082): named keys, slots 5-7
-          OPENROUTER_KEY_6: ${{ secrets.OR_KEY_BULL4LIFEB4L }}
-          OPENROUTER_KEY_7: ${{ secrets.OR_KEY_DMANOBLEAGB }}
-          NOUS_KEY_DMANOBELA: ${{ (matrix.runner == 4 || matrix.runner == 5) && secrets.NOUS_KEY_DMANOBELA || '' }}   # Nous on r4 (Hermes pilot) and r5 (Nous runner, helper 10-13)
+          # helper 10-13 (engine 51215/51216, admin 12:26Z): ACCOUNT MODE. A runner carries ONLY its own account's keys:
+          # r0, r3, r5 = DMANOBELA (OpenCode, OpenRouter, Nous; Orca on r0, Vercel on r3); r1 = BULL4LIFEB4L (OpenCode, OpenRouter);
+          # r2 = DMANOBLEAGB (OpenCode, OpenRouter); r4 = GUSSY (OpenRouter only). run_lanes.sh reads these names with B4L_KEYS=account.
+          # state saved to the CC every 20 min and at the end, restored next window
+          B4L_KEYS: account
+          OC_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OC_KEY_DMANOBELA || '' }}
+          OR_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_DMANOBELA || '' }}
+          NOUS_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.NOUS_KEY_DMANOBELA || '' }}
+          OC_KEY_BULL4LIFEB4L: ${{ matrix.runner == 1 && secrets.OC_KEY_BULL4LIFEB4L || '' }}
+          OR_KEY_BULL4LIFEB4L: ${{ matrix.runner == 1 && secrets.OR_KEY_BULL4LIFEB4L || '' }}
+          OC_KEY_DMANOBLEAGB: ${{ matrix.runner == 2 && secrets.OC_KEY_DMANOBLEAGB || '' }}
+          OR_KEY_DMANOBLEAGB: ${{ matrix.runner == 2 && secrets.OR_KEY_DMANOBLEAGB || '' }}
+          OR_KEY_GUSSY: ${{ matrix.runner == 4 && secrets.OR_KEY_GUSSY || '' }}
+          ORCA_API_KEY: ${{ matrix.runner == 0 && secrets.ORCA_API_KEY || '' }}
+          VERCEL_AI_GATEWAY_KEY: ${{ matrix.runner == 3 && secrets.VERCEL_AI_GATEWAY_KEY || '' }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           R: ${{ matrix.runner }}
           UNTIL: ${{ inputs.until }}
