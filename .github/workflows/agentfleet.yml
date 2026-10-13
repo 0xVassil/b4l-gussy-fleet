@@ -69,8 +69,12 @@ jobs:
       - name: deps + claude cli
         run: |
           pip install --quiet numpy pandas matplotlib scipy requests
-          npm i -g @anthropic-ai/claude-code > /dev/null 2>&1 && claude --version
-          npm i -g opencode-ai > /dev/null 2>&1 && echo "opencode $(opencode --version 2>&1 | head -1)"
+          # helper 10-13: an install that fails shows RED (it was silenced, and a runner then ran without its CLI)
+          npm i -g @anthropic-ai/claude-code 2>&1 | tail -2
+          claude --version
+          npm i -g opencode-ai 2>&1 | tail -2
+          OPV=$(opencode --version | head -1)
+          echo "opencode $OPV"
       - name: fetch kit
         env:
           LANE: ${{ matrix.lane }}
@@ -177,7 +181,7 @@ jobs:
         env:
           # admin 10-05: each lane has its OWN OpenCode Zen account (site = dmanobela, bot = bull4lifeb4l), so no lane
           # eats another's ceiling. Space Bunny Free lives on OpenCode Zen; its free tier works only inside the OpenCode CLI.
-          OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3) && secrets.OR_KEY_DMANOBELA) || ((matrix.runner == 1 || matrix.runner == 4) && secrets.OR_KEY_BULL4LIFEB4L) || secrets.OR_KEY_DMANOBLEAGB }}   # helper 10-13 (engine 51093): the runner's own named key, same map as the lanes step; unnamed secret kept until one site/bot run is green
+          OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_DMANOBELA) || (matrix.runner == 1 && secrets.OR_KEY_BULL4LIFEB4L) || (matrix.runner == 4 && secrets.OR_KEY_GUSSY) || secrets.OR_KEY_DMANOBLEAGB }}   # the runner's own account, as in the lanes step: r0/r3/r5 DMANOBELA, r1 BULL4LIFEB4L, r2 DMANOBLEAGB, r4 GUSSY
           BUNNY_HARNESS: opencode
           BUNNY_MODEL: ${{ matrix.lane == 'bot' && 'opencode/fledge-alpha-free' || 'opencode/space-bunny-free' }}   # 10-06: bot lane stalled on the space-bunny free limit; Fledge = stealth
           BUNNY_VARIANT: max
@@ -279,10 +283,10 @@ jobs:
           OC3: ${{ secrets.BOT_OC_KEY }}
           ORCA_API_KEY: ${{ secrets.ORCA_API_KEY }}
           VERCEL_AI_GATEWAY_KEY: ${{ secrets.VERCEL_AI_GATEWAY_KEY }}
-          OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3) && secrets.OR_KEY_DMANOBELA) || ((matrix.runner == 1 || matrix.runner == 4) && secrets.OR_KEY_BULL4LIFEB4L) || secrets.OR_KEY_DMANOBLEAGB }}   # helper 10-13 (engine 51084): the runner's own named key, r0/r3 DMANOBELA, r1/r4 BULL4LIFEB4L, r2 DMANOBLEAGB
+          OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_DMANOBELA) || (matrix.runner == 1 && secrets.OR_KEY_BULL4LIFEB4L) || (matrix.runner == 4 && secrets.OR_KEY_GUSSY) || secrets.OR_KEY_DMANOBLEAGB }}   # the runner's own account, as in the lanes step: r0/r3/r5 DMANOBELA, r1 BULL4LIFEB4L, r2 DMANOBLEAGB, r4 GUSSY
           # engine 10-13 (helper 51271): ONE OpenRouter key on a runner, its own account's, read by the account's name.
           # Before: the four numbered secrets OR_KEY_1..4, every account's key on every fetch runner.
-          OPENROUTER_KEY_1: ${{ ((matrix.runner == 0 || matrix.runner == 3) && secrets.OR_KEY_DMANOBELA) || ((matrix.runner == 1 || matrix.runner == 4) && secrets.OR_KEY_BULL4LIFEB4L) || secrets.OR_KEY_DMANOBLEAGB }}
+          OPENROUTER_KEY_1: ${{ ((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_DMANOBELA) || (matrix.runner == 1 && secrets.OR_KEY_BULL4LIFEB4L) || (matrix.runner == 4 && secrets.OR_KEY_GUSSY) || secrets.OR_KEY_DMANOBLEAGB }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
           R: ${{ matrix.runner }}
