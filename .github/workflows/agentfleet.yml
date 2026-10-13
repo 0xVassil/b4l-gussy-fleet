@@ -257,7 +257,7 @@ jobs:
           B4L_KEYS: account
           OC_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OC_KEY_DMANOBELA || '' }}
           OR_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_DMANOBELA || '' }}
-          NOUS_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.NOUS_KEY_DMANOBELA || '' }}
+          NOUS_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 7) && secrets.NOUS_KEY_DMANOBELA || '' }}
           OC_KEY_BULL4LIFEB4L: ${{ matrix.runner == 1 && secrets.OC_KEY_BULL4LIFEB4L || '' }}
           OR_KEY_BULL4LIFEB4L: ${{ matrix.runner == 1 && secrets.OR_KEY_BULL4LIFEB4L || '' }}
           OC_KEY_DMANOBLEAGB: ${{ matrix.runner == 2 && secrets.OC_KEY_DMANOBLEAGB || '' }}
