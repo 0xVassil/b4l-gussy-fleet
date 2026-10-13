@@ -27,12 +27,17 @@ on:
         description: 'epoch s; each lane runner re-dispatches itself after its window until then (empty = once)'
         required: false
         default: ''
+      talker:
+        description: "OFF unless 'only': runs ONLY the talker job (one up-only worker, site_talk_r5, 45 min, engine 51159)"
+        required: false
+        default: ''
 permissions:
   contents: read
   actions: write
 jobs:
   fleet:
     name: ${{ matrix.lane }} (${{ matrix.runner }})
+    if: ${{ inputs.talker != 'only' }}
     concurrency:
       group: agentfleet-${{ matrix.lane }}-r${{ matrix.runner }}
       cancel-in-progress: false
@@ -293,6 +298,43 @@ jobs:
             sudo test -f "$d/logs/runner.log" || continue
             echo "$(basename "$d"): starts=$(sudo grep -c ' start ' "$d/logs/runner.log") ends=$(sudo grep -c ' end ' "$d/logs/runner.log")"
           done
+
+  # helper 10-13 (engine 51159: site's remote-agent task is a go). OFF unless talker = only. ONE up-only worker, named
+  # site_talk_r5, through site's screen client: no --take-keys, no --restore-memory, nothing comes down. Its hub key is
+  # SITE_CC_TOKEN (the lead's own key, --as site); its model key is NOUS_KEY_DMANOBELA (zero-price allow-list only).
+  # The engine token is read in the kit step ONLY, as the lanes kit step does. 45 minutes, then it stops itself.
+  talker:
+    name: talker (site_talk_r5)
+    if: ${{ inputs.talker == 'only' }}
+    concurrency:
+      group: agentfleet-talker
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: fetch the talker kit (engine's kit, this step only)
+        env:
+          FLEET_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+        run: |
+          set -eu
+          mkdir -p "$HOME/talker_kit"
+          curl -sf -m 60 -H "Authorization: Bearer $FLEET_TOK" -H "X-CC-Agent: engine" \
+            "https://bull4life.com/cc/api/artifacts/read?rel=engine/current/kit/talker-kit.md" | jq -r .body | base64 -d | tar xz -C "$HOME/talker_kit"
+          ls -R "$HOME/talker_kit"
+      - name: talk (up only, 45 minutes)
+        env:
+          CC_BASE: https://bull4life.com/cc
+          CC_AGENT_TOKEN: ${{ secrets.SITE_CC_TOKEN }}
+          NOUS_KEY_DMANOBELA: ${{ secrets.NOUS_KEY_DMANOBELA }}
+          TALK_MINUTES: '45'
+        run: |
+          set -eu
+          cd "$HOME/talker_kit/talker"
+          export TALK_MEMORY="$HOME/talker_kit/memory"
+          python -u b4l_agent_screen.py --name site_talk_r5 --as site --memory "$TALK_MEMORY" -- python -u talk_agent.py
 
   respawn:
     needs: [fleet]
