@@ -257,6 +257,8 @@ jobs:
           R: ${{ matrix.runner }}
         run: |
           cd "$HOME/bunnies"
+          # helper 10-13: the pilot reads the kit's CODE_MAP (run 38475710717 crashed on the laptop default path); point it at the kit, as run_lanes.sh does
+          export B4L_CODE_MAP="$HOME/bunnies/CODE_MAP.md" B4L_RANKED="$HOME/bunnies/RANKED.md"
           python3 hermes_pilot.py --batch batch1161 --arms hermes --seconds 4800 || echo "::warning::hermes pilot exit $?"
           cat pilot_hermes/TABLE.md 2>/dev/null || echo "::warning::no TABLE.md written"
       - name: run the 10-lane loop (lanes only, not runner 7)
