@@ -248,6 +248,10 @@ jobs:
           OPENROUTER_KEY_2: ${{ secrets.OR_KEY_2 }}
           OPENROUTER_KEY_3: ${{ secrets.OR_KEY_3 }}
           OPENROUTER_KEY_4: ${{ secrets.OR_KEY_4 }}
+          OPENROUTER_KEY_5: ${{ secrets.OR_KEY_DMANOBELA }}      # helper 10-13 (engine 51082): named keys, slots 5-7
+          OPENROUTER_KEY_6: ${{ secrets.OR_KEY_BULL4LIFEB4L }}
+          OPENROUTER_KEY_7: ${{ secrets.OR_KEY_DMANOBLEAGB }}
+          NOUS_KEY_DMANOBELA: ${{ matrix.runner == 4 && secrets.NOUS_KEY_DMANOBELA || '' }}   # Nous only on r4 (Hermes pilot)
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           R: ${{ matrix.runner }}
           UNTIL: ${{ inputs.until }}
