@@ -57,7 +57,7 @@ jobs:
           LANE: ${{ matrix.lane }}
           R: ${{ matrix.runner }}
         run: |
-          case "$LANE" in site|bot|lanes|fetch) ;; *) echo "::error::lane must be site, bot, lanes or fetch"; exit 1;; esac
+          case "$LANE" in site|bot|lanes|fetch|room) ;; *) echo "::error::lane must be site, bot, lanes, fetch or room"; exit 1;; esac
           # engine 10-13 (the admin, through the helper: the workflow must not limit how many runners there are): a
           # runner is any whole number, 0 or more. A runner beyond 5 carries no account's key until the key steps
           # below name it.
@@ -104,6 +104,10 @@ jobs:
           elif [ "$LANE" = fetch ]; then
             get "engine/current/kit/fetch-kit.md" "$FLEET_TOK" engine
             echo "kit: fetch (engine)"
+          # room (engine 10-14): every free provider on its own harness (Hermes; the OpenCode CLI), the engine room as tools
+          elif [ "$LANE" = room ]; then
+            get "engine/current/kit/room-kit.md" "$FLEET_TOK" engine
+            echo "kit: room (engine)"
           elif get "$LANE/current/kit/$LANE-kit.md" "$TOK" "$ME" 2>/dev/null && [ -f "$HOME/bunnies/run_gh.sh" ]; then
             echo "kit: $LANE's own"
           else
@@ -180,7 +184,7 @@ jobs:
           rm -rf "$d"
           echo "suite branches: $(git -C "$HOME/suite" branch -r | grep -vc HEAD) | engineapp branches: $(git -C "$HOME/engineapp" branch -r | grep -vc HEAD)"
       - name: run 5 workers
-        if: ${{ matrix.lane != 'lanes' && matrix.lane != 'fetch' }}
+        if: ${{ matrix.lane != 'lanes' && matrix.lane != 'fetch' && matrix.lane != 'room' }}
         env:
           # admin 10-05: each lane has its OWN OpenCode Zen account (site = dmanobela, bot = bull4lifeb4l), so no lane
           # eats another's ceiling. Space Bunny Free lives on OpenCode Zen; its free tier works only inside the OpenCode CLI.
@@ -312,6 +316,35 @@ jobs:
           export JOB_END=$(( JOB_T0 + 340*60 ))
           if [ -n "$UNTIL" ] && [ "$UNTIL" -lt "$JOB_END" ]; then export JOB_END=$UNTIL; fi
           bash "$HOME/bunnies/run_fetch.sh" "$R"
+      # engine 10-14 (the admin: "opencode keys with opencode cli and openrouter orca vercel and all the rest with hermes
+      # for the best results ... nothing throw http"): the ROOM lane. A runner carries ONLY its own account's keys (the
+      # lanes' map: r0, r3, r5 = DMANOBELA; r1 = BULL4LIFEB4L; r2 = DMANOBLEAGB; r4 = GUSSY; Orca on r0 and r5, Vercel
+      # on r3). run_room.sh installs Hermes (pinned) and runs the roster's agents, each in its own copy of the room; one
+      # shot, no respawn. Its log prints counts and model names only.
+      - name: run the rooms (room only)
+        if: ${{ matrix.lane == 'room' }}
+        env:
+          OC_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OC_KEY_DMANOBELA || '' }}
+          OR_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_DMANOBELA || '' }}
+          NOUS_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.NOUS_KEY_DMANOBELA || '' }}
+          OC_KEY_BULL4LIFEB4L: ${{ matrix.runner == 1 && secrets.OC_KEY_BULL4LIFEB4L || '' }}
+          OR_KEY_BULL4LIFEB4L: ${{ matrix.runner == 1 && secrets.OR_KEY_BULL4LIFEB4L || '' }}
+          OC_KEY_DMANOBLEAGB: ${{ matrix.runner == 2 && secrets.OC_KEY_DMANOBLEAGB || '' }}
+          OR_KEY_DMANOBLEAGB: ${{ matrix.runner == 2 && secrets.OR_KEY_DMANOBLEAGB || '' }}
+          OR_KEY_GUSSY: ${{ matrix.runner == 4 && secrets.OR_KEY_GUSSY || '' }}
+          ORCA_API_KEY: ${{ (matrix.runner == 0 || matrix.runner == 5) && secrets.ORCA_API_KEY || '' }}
+          VERCEL_AI_GATEWAY_KEY: ${{ matrix.runner == 3 && secrets.VERCEL_AI_GATEWAY_KEY || '' }}
+          CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+          R: ${{ matrix.runner }}
+        run: bash "$HOME/bunnies/run_room.sh" "$R"
+      - name: the rooms' results (room only)
+        if: ${{ always() && matrix.lane == 'room' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rooms-r${{ matrix.runner }}
+          path: /home/runner/rooms
+          retention-days: 7
+          if-no-files-found: ignore
       - name: summary (counts only)
         if: always()
         run: |
