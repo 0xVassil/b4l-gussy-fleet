@@ -323,8 +323,9 @@ jobs:
       # engine 10-14 (the admin: "opencode keys with opencode cli and openrouter orca vercel and all the rest with hermes
       # for the best results ... nothing throw http"): the ROOM lane. A runner carries ONLY its own account's keys (the
       # lanes' map: r0, r3, r5 = DMANOBELA; r1 = BULL4LIFEB4L; r2 = DMANOBLEAGB; r4 = GUSSY; Orca on r0 and r5, Vercel
-      # on r3). run_room.sh installs Hermes (pinned) and runs the roster's agents, each in its own copy of the room; one
-      # shot, no respawn. Its log prints counts and model names only.
+      # on r3). run_room.sh installs Hermes (pinned) and runs the roster's agents. NO CAPS (the admin 10-14: "dont put caps
+      # no time"): the fleet at work takes task after task from its queue in the Command Center for the job's whole window,
+      # and asks for its next window itself while work is left (~/rooms/respawn). Its log prints counts and model names only.
       - name: run the rooms (room only)
         if: ${{ matrix.lane == 'room' }}
         env:
@@ -342,7 +343,14 @@ jobs:
           R: ${{ matrix.runner }}
           # which roster: the fleet at work (roster.json) unless the dispatch names another (roster_score.json = scoring)
           ROOM_ROSTER: ${{ inputs.roster || 'roster.json' }}
-        run: bash "$HOME/bunnies/run_room.sh" "$R"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash "$HOME/bunnies/run_room.sh" "$R"
+          if [ -s "$HOME/rooms/respawn" ]; then
+            gh workflow run agentfleet.yml -R "$GITHUB_REPOSITORY" -f lane=room -f runners="[$R]" -f roster="$ROOM_ROSTER" \
+              && echo "room runner $R: work left ($(cat "$HOME/rooms/respawn" | tr -d '\n') open): next window dispatched" \
+              || echo "::warning::room runner $R: next window dispatch failed"
+          fi
       - name: the rooms' results (room only)
         if: ${{ always() && matrix.lane == 'room' }}
         uses: actions/upload-artifact@v4
