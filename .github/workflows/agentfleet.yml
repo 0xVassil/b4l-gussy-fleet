@@ -332,8 +332,8 @@ jobs:
           OC_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.OC_KEY_DMANOBELA || '' }}
           OR_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.OR_KEY_DMANOBELA || '' }}
           NOUS_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.NOUS_KEY_DMANOBELA || '' }}
-          OC_KEY_BULL4LIFEB4L: ${{ (matrix.runner == 1 || matrix.runner == 7 || matrix.runner == 9) && secrets.OC_KEY_BULL4LIFEB4L || '' }}
-          OR_KEY_BULL4LIFEB4L: ${{ (matrix.runner == 1 || matrix.runner == 7 || matrix.runner == 9) && secrets.OR_KEY_BULL4LIFEB4L || '' }}
+          OC_KEY_BULL4LIFEB4L: ${{ (matrix.runner == 1 || matrix.runner == 7 || matrix.runner == 9 || matrix.runner == 10) && secrets.OC_KEY_BULL4LIFEB4L || '' }}
+          OR_KEY_BULL4LIFEB4L: ${{ (matrix.runner == 1 || matrix.runner == 7 || matrix.runner == 9 || matrix.runner == 10) && secrets.OR_KEY_BULL4LIFEB4L || '' }}
           OC_KEY_DMANOBLEAGB: ${{ (matrix.runner == 2 || matrix.runner == 8) && secrets.OC_KEY_DMANOBLEAGB || '' }}
           OR_KEY_DMANOBLEAGB: ${{ (matrix.runner == 2 || matrix.runner == 8) && secrets.OR_KEY_DMANOBLEAGB || '' }}
           OR_KEY_GUSSY: ${{ matrix.runner == 4 && secrets.OR_KEY_GUSSY || '' }}
