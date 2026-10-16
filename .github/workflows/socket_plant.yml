@@ -1,0 +1,19 @@
+name: socket plant (scratch, engine_helper 2026-10-16)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 'write the probe (exit 9 when it can reach out, 0 when it cannot)'
+        run: |
+          mkdir -p "$RUNNER_TEMP/probe"
+          printf 'import socket, sys\ntry:\n    socket.create_connection(("1.1.1.1", 53), timeout=5)\n    sys.exit(9)\nexcept OSError:\n    sys.exit(0)\n' > "$RUNNER_TEMP/probe/netcheck.py"
+      - name: 'control - docker WITHOUT --network none (the probe must reach out: exit 9)'
+        continue-on-error: true
+        run: docker run --rm -v "$RUNNER_TEMP/probe:/work" -w /work python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 python netcheck.py; echo "CONTROL exit $?"
+      - name: 'plant - docker --network none (the probe must FAIL to reach out: exit 0)'
+        run: docker run --rm --network none --memory 512m --cpus 1 --pids-limit 128 -v "$RUNNER_TEMP/probe:/work" -w /work python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 python netcheck.py; echo "PLANT exit $?"
