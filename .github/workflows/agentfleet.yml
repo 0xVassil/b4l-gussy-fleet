@@ -320,6 +320,18 @@ jobs:
           export JOB_END=$(( JOB_T0 + 340*60 ))
           if [ -n "$UNTIL" ] && [ "$UNTIL" -lt "$JOB_END" ]; then export JOB_END=$UNTIL; fi
           bash "$HOME/bunnies/run_fetch.sh" "$R"
+      # section 3 (opus_boost 20:57Z): the runner's tally is kept between jobs by this cache: key per runner and run, restore
+      # by the runner's prefix (the newest). The room step writes it at its end (B4L_TALLY); no commit, no hand.
+      - name: tally cache (restore the runner's tally)
+        if: ${{ matrix.lane == 'room' }}
+        run: mkdir -p "$RUNNER_TEMP/room_tally"
+      - uses: actions/cache@v4
+        if: ${{ matrix.lane == 'room' }}
+        with:
+          path: ${{ runner.temp }}/room_tally
+          key: room-tally-r${{ matrix.runner }}-${{ github.run_id }}
+          restore-keys: |
+            room-tally-r${{ matrix.runner }}-
       # engine 10-14 (the admin: "opencode keys with opencode cli and openrouter orca vercel and all the rest with hermes
       # for the best results ... nothing throw http"): the ROOM lane. A runner carries ONLY its own account's keys (the
       # lanes' map: r0, r3, r5 = DMANOBELA; r1 = BULL4LIFEB4L; r2 = DMANOBLEAGB; r4 = GUSSY; Orca on r0 and r5, Vercel
@@ -329,6 +341,7 @@ jobs:
       - name: run the rooms (room only)
         if: ${{ matrix.lane == 'room' }}
         env:
+          B4L_TALLY: ${{ runner.temp }}/room_tally/tally.json
           OC_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.OC_KEY_DMANOBELA || '' }}
           OR_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.OR_KEY_DMANOBELA || '' }}
           NOUS_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.NOUS_KEY_DMANOBELA || '' }}
