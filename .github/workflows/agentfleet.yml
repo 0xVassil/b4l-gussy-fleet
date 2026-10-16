@@ -127,6 +127,7 @@ jobs:
       - uses: actions/checkout@v4
         if: ${{ matrix.lane == 'bot' }}
         with:
+          persist-credentials: false
           repository: dmanobela-glitch/-b4l-ai-cluster
           ref: pexkit
           path: payload_pex
@@ -147,6 +148,7 @@ jobs:
       - uses: actions/checkout@v4
         if: ${{ matrix.lane == 'bot' }}
         with:
+          persist-credentials: false
           repository: dmanobela-glitch/-b4l-ai-cluster
           ref: botappkit
           path: payload_botapp
@@ -169,6 +171,7 @@ jobs:
       - uses: actions/checkout@v4
         if: ${{ matrix.lane == 'site' }}
         with:
+          persist-credentials: false
           repository: dmanobela-glitch/-b4l-ai-cluster
           ref: suitekit
           path: payload_suite
