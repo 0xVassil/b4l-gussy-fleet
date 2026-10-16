@@ -408,7 +408,7 @@ jobs:
 
   respawn:
     needs: [fleet]
-    if: ${{ always() && !cancelled() && inputs.until != '' }}
+    if: ${{ always() && !cancelled() && inputs.until != '' && inputs.lane != 'room' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
