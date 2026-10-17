@@ -194,17 +194,17 @@ jobs:
       - name: run 5 workers
         if: ${{ matrix.lane != 'lanes' && matrix.lane != 'fetch' && matrix.lane != 'room' }}
         env:
-          # admin 10-05: each lane has its OWN OpenCode Zen account (site = dmanobela, bot = bull4lifeb4l), so no lane
+          # admin 10-05: each lane has its OWN OpenCode Zen account (site = A1, bot = A2), so no lane
           # eats another's ceiling. Space Bunny Free lives on OpenCode Zen; its free tier works only inside the OpenCode CLI.
-          OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_DMANOBELA) || (matrix.runner == 1 && secrets.OR_KEY_BULL4LIFEB4L) || (matrix.runner == 4 && secrets.OR_KEY_GUSSY) || secrets.OR_KEY_DMANOBLEAGB }}   # the runner's own account, as in the lanes step: r0/r3/r5 DMANOBELA, r1 BULL4LIFEB4L, r2 DMANOBLEAGB, r4 GUSSY
+          OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_A1) || (matrix.runner == 1 && secrets.OR_KEY_A2) || (matrix.runner == 4 && secrets.OR_KEY_A4) || secrets.OR_KEY_A3 }}   # the runner's own account, as in the lanes step: r0/r3/r5 A1, r1 A2, r2 A3, r4 A4
           BUNNY_HARNESS: opencode
           BUNNY_MODEL: ${{ matrix.lane == 'bot' && 'opencode/fledge-alpha-free' || 'opencode/space-bunny-free' }}   # 10-06: bot lane stalled on the space-bunny free limit; Fledge = stealth
           BUNNY_VARIANT: max
           BUNNY_API_KEY: ${{ matrix.lane == 'bot' && secrets.BOT_OC_KEY || secrets.SITE_OC_KEY }}
           # admin 10-06: every worker shows '<model> @ <account key name>' in the CC (engine compute/fleet_kit/MODEL_ACCOUNTS.md);
-          # bot 10-06: BOT_OC_KEY = OPENCODE_KEY_BULL4LIFEB4L. run_gh.sh re-sets the label on a model rotation.
-          BUNNY_ACCOUNT: ${{ matrix.lane == 'bot' && 'OPENCODE_KEY_BULL4LIFEB4L' || 'SITE_OC_KEY (account not verified)' }}
-          BUNNY_MODEL_LABEL: ${{ matrix.lane == 'bot' && 'fledge-alpha-free @ OPENCODE_KEY_BULL4LIFEB4L' || 'space-bunny-free @ SITE_OC_KEY (account not verified)' }}
+          # bot 10-06: BOT_OC_KEY = OC_KEY_A2. run_gh.sh re-sets the label on a model rotation.
+          BUNNY_ACCOUNT: ${{ matrix.lane == 'bot' && 'OC_KEY_A2' || 'SITE_OC_KEY (account not verified)' }}
+          BUNNY_MODEL_LABEL: ${{ matrix.lane == 'bot' && 'fledge-alpha-free @ OC_KEY_A2' || 'space-bunny-free @ SITE_OC_KEY (account not verified)' }}
           LANE: ${{ matrix.lane }}
           R: ${{ matrix.runner }}
           UNTIL: ${{ inputs.until }}
