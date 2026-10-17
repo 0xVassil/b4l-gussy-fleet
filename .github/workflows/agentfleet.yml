@@ -89,6 +89,7 @@ jobs:
           SITE_TOK: ${{ secrets.SITE_CC_TOKEN }}
           BOT_TOK: ${{ secrets.BOT_CC_TOKEN }}
           FLEET_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+          ENGINE_KEY: ${{ secrets.B4L_ENGINE_KEY }}
         run: |
           set -eu
           umask 077
@@ -102,15 +103,15 @@ jobs:
           # engine's token in THIS step only; the workers' cc.env holds the lane token
           # lanes (engine 10-10: the 10-lane free loop moved off the laptop): engine's private kit, read with engine's token
           if [ "$LANE" = lanes ]; then
-            get "engine/current/kit/lanes-kit.md" "$FLEET_TOK" engine
+            get "engine/current/kit/lanes-kit.md" "${ENGINE_KEY:-$FLEET_TOK}" engine
             echo "kit: lanes (engine)"
           # fetch (engine 10-11, workflow 2 "Fetch info + skills"): its own kit, its own folder, its own state
           elif [ "$LANE" = fetch ]; then
-            get "engine/current/kit/fetch-kit.md" "$FLEET_TOK" engine
+            get "engine/current/kit/fetch-kit.md" "${ENGINE_KEY:-$FLEET_TOK}" engine
             echo "kit: fetch (engine)"
           # room (engine 10-14): every free provider on its own harness (Hermes; the OpenCode CLI), the engine room as tools
           elif [ "$LANE" = room ]; then
-            get "engine/current/kit/room-kit.md" "$FLEET_TOK" engine
+            get "engine/current/kit/room-kit.md" "${ENGINE_KEY:-$FLEET_TOK}" engine
             echo "kit: room (engine)"
           elif get "$LANE/current/kit/$LANE-kit.md" "$TOK" "$ME" 2>/dev/null && [ -f "$HOME/bunnies/run_gh.sh" ]; then
             echo "kit: $LANE's own"
@@ -356,6 +357,7 @@ jobs:
           ORCA_API_KEY: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.ORCA_API_KEY || '' }}
           VERCEL_AI_GATEWAY_KEY: ${{ matrix.runner == 3 && secrets.VERCEL_AI_GATEWAY_KEY || '' }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+          CC_ENGINE_KEY: ${{ secrets.B4L_ENGINE_KEY }}
           R: ${{ matrix.runner }}
           # which roster: the fleet at work (roster.json) unless the dispatch names another (roster_score.json = scoring)
           ROOM_ROSTER: ${{ inputs.roster || 'roster.json' }}
@@ -404,10 +406,11 @@ jobs:
       - name: fetch the talker kit (engine's kit, this step only)
         env:
           FLEET_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+          ENGINE_KEY: ${{ secrets.B4L_ENGINE_KEY }}
         run: |
           set -eu
           mkdir -p "$HOME/talker_kit"
-          curl -sf -m 60 -H "Authorization: Bearer $FLEET_TOK" -H "X-CC-Agent: engine" \
+          curl -sf -m 60 -H "Authorization: Bearer ${ENGINE_KEY:-$FLEET_TOK}" -H "X-CC-Agent: engine" \
             "https://bull4life.com/cc/api/artifacts/read?rel=engine/current/kit/talker-kit.md" | jq -r .body | base64 -d | tar xz -C "$HOME/talker_kit"
           ls -R "$HOME/talker_kit"
       - name: talk (up only, 45 minutes)
