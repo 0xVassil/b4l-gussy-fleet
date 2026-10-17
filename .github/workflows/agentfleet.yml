@@ -312,10 +312,10 @@ jobs:
           OC3: ${{ secrets.BOT_OC_KEY }}
           ORCA_API_KEY: ${{ secrets.ORCA_API_KEY }}
           VERCEL_AI_GATEWAY_KEY: ${{ secrets.VERCEL_AI_GATEWAY_KEY }}
-          OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_DMANOBELA) || (matrix.runner == 1 && secrets.OR_KEY_BULL4LIFEB4L) || (matrix.runner == 4 && secrets.OR_KEY_GUSSY) || secrets.OR_KEY_DMANOBLEAGB }}   # the runner's own account, as in the lanes step: r0/r3/r5 DMANOBELA, r1 BULL4LIFEB4L, r2 DMANOBLEAGB, r4 GUSSY
+          OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_A1) || (matrix.runner == 1 && secrets.OR_KEY_A2) || (matrix.runner == 4 && secrets.OR_KEY_A4) || secrets.OR_KEY_A3 }}   # the runner's own account, as in the lanes step: r0/r3/r5 A1, r1 A2, r2 A3, r4 A4
           # engine 10-13 (helper 51271): ONE OpenRouter key on a runner, its own account's, read by the account's name.
           # Before: the four numbered secrets OR_KEY_1..4, every account's key on every fetch runner.
-          OPENROUTER_KEY_1: ${{ ((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_DMANOBELA) || (matrix.runner == 1 && secrets.OR_KEY_BULL4LIFEB4L) || (matrix.runner == 4 && secrets.OR_KEY_GUSSY) || secrets.OR_KEY_DMANOBLEAGB }}
+          OPENROUTER_KEY_1: ${{ ((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_A1) || (matrix.runner == 1 && secrets.OR_KEY_A2) || (matrix.runner == 4 && secrets.OR_KEY_A4) || secrets.OR_KEY_A3 }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
           R: ${{ matrix.runner }}
