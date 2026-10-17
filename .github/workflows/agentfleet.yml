@@ -389,7 +389,7 @@ jobs:
   # site's screen client: --take-messages (a lead's message comes in as one plain line, no keys) and --restore-memory;
   # never --take-keys. Its hub key is
   # TALKER_CC_TOKEN = the worker-scoped token of site_talk_r5 (cc_token.py issue, engine 51154 point 1); its model key is
-  # NOUS_KEY_DMANOBELA (zero-price allow-list only). Not site's lead key: the worker proves only its own name.
+  # NOUS_KEY_A1 (zero-price allow-list only). Not site's lead key: the worker proves only its own name.
   # The engine token is read in the kit step ONLY, as the lanes kit step does. 45 minutes, then it stops itself.
   talker:
     name: talker (site_talk_r5)
@@ -417,7 +417,7 @@ jobs:
         env:
           CC_BASE: https://bull4life.com/cc
           CC_AGENT_TOKEN: ${{ secrets.TALKER_CC_TOKEN }}
-          NOUS_KEY_DMANOBELA: ${{ secrets.NOUS_KEY_DMANOBELA }}
+          NOUS_KEY_A1: ${{ secrets.NOUS_KEY_A1 }}
           TALK_MINUTES: '45'
         run: |
           set -eu
