@@ -338,7 +338,7 @@ jobs:
             room-tally-r${{ matrix.runner }}-
       # engine 10-14 (the admin: "opencode keys with opencode cli and openrouter orca vercel and all the rest with hermes
       # for the best results ... nothing throw http"): the ROOM lane. A runner carries ONLY its own account's keys (the
-      # lanes' map: r0, r3, r5 = DMANOBELA; r1 = BULL4LIFEB4L; r2 = DMANOBLEAGB; r4 = GUSSY; Orca on r0 and r5, Vercel
+      # lanes' map: r0, r3, r5 = A1; r1 = A2; r2 = A3; r4 = A4; Orca on r0 and r5, Vercel
       # on r3). run_room.sh installs Hermes (pinned) and runs the roster's agents. NO CAPS (the admin 10-14: "dont put caps
       # no time"): the fleet at work takes task after task from its queue in the Command Center for the job's whole window,
       # and asks for its next window itself while work is left (~/rooms/respawn). Its log prints counts and model names only.
@@ -346,14 +346,14 @@ jobs:
         if: ${{ matrix.lane == 'room' }}
         env:
           B4L_TALLY: ${{ runner.temp }}/room_tally/tally.json
-          OC_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.OC_KEY_DMANOBELA || '' }}
-          OR_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.OR_KEY_DMANOBELA || '' }}
-          NOUS_KEY_DMANOBELA: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.NOUS_KEY_DMANOBELA || '' }}
-          OC_KEY_BULL4LIFEB4L: ${{ (matrix.runner == 1 || matrix.runner == 7 || matrix.runner == 9 || matrix.runner == 10) && secrets.OC_KEY_BULL4LIFEB4L || '' }}
-          OR_KEY_BULL4LIFEB4L: ${{ (matrix.runner == 1 || matrix.runner == 7 || matrix.runner == 9 || matrix.runner == 10) && secrets.OR_KEY_BULL4LIFEB4L || '' }}
-          OC_KEY_DMANOBLEAGB: ${{ (matrix.runner == 2 || matrix.runner == 8) && secrets.OC_KEY_DMANOBLEAGB || '' }}
-          OR_KEY_DMANOBLEAGB: ${{ (matrix.runner == 2 || matrix.runner == 8) && secrets.OR_KEY_DMANOBLEAGB || '' }}
-          OR_KEY_GUSSY: ${{ matrix.runner == 4 && secrets.OR_KEY_GUSSY || '' }}
+          OC_KEY_A1: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.OC_KEY_A1 || '' }}
+          OR_KEY_A1: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.OR_KEY_A1 || '' }}
+          NOUS_KEY_A1: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.NOUS_KEY_A1 || '' }}
+          OC_KEY_A2: ${{ (matrix.runner == 1 || matrix.runner == 7 || matrix.runner == 9 || matrix.runner == 10) && secrets.OC_KEY_A2 || '' }}
+          OR_KEY_A2: ${{ (matrix.runner == 1 || matrix.runner == 7 || matrix.runner == 9 || matrix.runner == 10) && secrets.OR_KEY_A2 || '' }}
+          OC_KEY_A3: ${{ (matrix.runner == 2 || matrix.runner == 8) && secrets.OC_KEY_A3 || '' }}
+          OR_KEY_A3: ${{ (matrix.runner == 2 || matrix.runner == 8) && secrets.OR_KEY_A3 || '' }}
+          OR_KEY_A4: ${{ matrix.runner == 4 && secrets.OR_KEY_A4 || '' }}
           ORCA_API_KEY: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.ORCA_API_KEY || '' }}
           VERCEL_AI_GATEWAY_KEY: ${{ matrix.runner == 3 && secrets.VERCEL_AI_GATEWAY_KEY || '' }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
