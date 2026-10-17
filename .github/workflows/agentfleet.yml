@@ -142,7 +142,7 @@ jobs:
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in payload_pex/pexkit.enc -pass "pass:$PEX_KEY" | tar -xz -C "$HOME"
           rm -rf payload_pex
           echo "pex files: $(find "$HOME/pex" -type f | wc -l)"
-      # bot's Bot app source (admin 10-06: push the app build to the max; repo dmanobela-glitch/b4l-bot-app is bot's).
+      # bot's Bot app source (admin 10-06: push the app build to the max; repo b4l-bot-app is bot's).
       # Same rules as PEX: orphan branch `botappkit` of engine's public repo, key = repo secret B4L_BOTAPP_KIT_KEY (bot's
       # own key). The payload is a GIT BUNDLE of every branch (rows must rebase), cloned into ~/botapp; only the branch
       # count is printed (public logs).
