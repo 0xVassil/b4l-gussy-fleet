@@ -8,7 +8,7 @@
 # - Runner R (0..3) hosts gussy_spacebunny(5R+1)..(5R+5). 5 per runner, not more: a 16 GB runner died at 8 workers.
 # - The job is capped at 350 min; JOB_END stops new rows ~5h45m in. The cron restarts it every 6 h; the concurrency
 #   group per runner keeps two copies of one runner's workers from overlapping.
-# - PUBLIC LOGS: nothing private is printed. Keys are repo secrets (OR_KEY_GUSSY, CC_AGENT_TOKEN), the kit
+# - PUBLIC LOGS: nothing private is printed. Keys are repo secrets (OR_KEY_A4, CC_AGENT_TOKEN), the kit
 #   comes from the Bull4Life Command Center hub (not this repo), workers write only to their own log files, and the
 #   summary prints counts only.
 name: gussybunnies
@@ -58,7 +58,7 @@ jobs:
           echo "kit files: $(find "$HOME/bunnies" -type f | wc -l)"
       - name: run 5 bunnies
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OR_KEY_GUSSY }}
+          OPENROUTER_API_KEY: ${{ secrets.OR_KEY_A4 }}
           # the OpenRouter key here is Gussy's own, for stealth runs only (admin 10-05): the model is locked
           BUNNY_MODEL: stealth/space-bunny-alpha
           R: ${{ matrix.runner }}
