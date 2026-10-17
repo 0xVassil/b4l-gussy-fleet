@@ -6,7 +6,7 @@
 #   `claude -p` per milestone. The lane's agent (site or bot) feeds those goals; engine feeds nothing here.
 # - Kit: the lane's own kit if it publishes one at <lane>/current/kit/<lane>-kit.md (a base64 tar.gz with a run_gh.sh
 #   that takes the worker name), else engine's worker kit (engine/current/kit/bunny-kit.md, research mode).
-# - CC token: secret SITE_CC_TOKEN / BOT_CC_TOKEN when the lane sets one, else engine's fleet token.
+# - CC token: the bot lane's secret BOT_CC_TOKEN when it is set, else engine's fleet token (the site lane: the fleet token).
 # - Model: Space Bunny Free on OpenCode Zen through the OpenCode CLI, one OpenCode account per lane (10-05).
 # - PUBLIC LOGS: nothing private is printed; workers write only to their own files; the summary prints counts only.
 name: agentfleet
@@ -86,14 +86,13 @@ jobs:
         env:
           LANE: ${{ matrix.lane }}
           R: ${{ matrix.runner }}
-          SITE_TOK: ${{ secrets.SITE_CC_TOKEN }}
           BOT_TOK: ${{ secrets.BOT_CC_TOKEN }}
           FLEET_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           ENGINE_KEY: ${{ secrets.B4L_ENGINE_KEY }}
         run: |
           set -eu
           umask 077
-          if [ "$LANE" = site ]; then TOK=${SITE_TOK:-$FLEET_TOK}; else TOK=${BOT_TOK:-$FLEET_TOK}; fi
+          if [ "$LANE" = site ]; then TOK=$FLEET_TOK; else TOK=${BOT_TOK:-$FLEET_TOK}; fi
           printf 'CC_AGENT_TOKEN=%s\n' "$TOK" > "$HOME/cc.env"
           mkdir -p "$HOME/bunnies"
           ME=$(printf '%s_gh%02d' "$LANE" $(( 5*R + 1 )))
