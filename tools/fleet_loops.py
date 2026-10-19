@@ -115,8 +115,10 @@ def workflows(repo, ref):
         name = os.path.basename(w['path'])
         d = json.loads(gh(['api', 'repos/%s/contents/%s%s' % (repo, w['path'], ref_query(ref))]))
         body = base64.b64decode(d['content']).decode('utf-8', 'replace')
+        caps = [int(x) for x in re.findall(r'timeout-minutes:\s*(\d+)', body)]
         out[name] = {'id': w['id'], 'state': w['state'], 'scheduled': scheduled(body),
-                     'cron': re.findall(r"cron:\s*'([^']+)'", body)}
+                     'cron': re.findall(r"cron:\s*'([^']+)'", body),
+                     'run_min': max(caps) if caps else None}      # the longest job cap: one run's limit
     return out
 
 
@@ -125,17 +127,60 @@ def runs_at_work(repo, name):
     return [str(r['databaseId']) for r in json.loads(out or '[]') if r['status'] in RUN_AT_WORK]
 
 
-def record(fleet, wf, w, every, runs):
-    return {'id': '%s:%s' % (fleet, wf), 'fleet': fleet, 'workflow': wf, 'state': w['state'], 'scheduled': w['scheduled'],
-            'cron': w['cron'], 'loop_time_min': every, 'runs_at_work': runs}
+def state_of(w, runs):
+    """the lead's state: paused (disabled), running (a run at work), waiting (enabled, nothing at work)"""
+    if not w['state'].startswith('active'):
+        return 'paused'
+    return 'running' if runs else 'waiting'
+
+
+def next_start(w, every, now):
+    """the next UTC start of the loop: the cron's minute in the next hour the loop time allows; None when paused"""
+    if not w['state'].startswith('active') or not w['cron']:
+        return None
+    minute = int(w['cron'][0].split()[0])
+    step = every // 60
+    t = now.replace(minute=minute, second=0, microsecond=0)
+    if t <= now:
+        t += datetime.timedelta(hours=1)
+    for _ in range(24 * 60):
+        if (t.hour % step) == 0:
+            return t.strftime('%Y-%m-%dT%H:%M:%SZ')
+        t += datetime.timedelta(hours=1)
+    return None
+
+
+def last_started(repo, name):
+    """the start (UTC Z) of the workflow's latest run of any state, or None"""
+    out = gh(['run', 'list', '-R', repo, '--workflow', name, '--limit', '1', '--json', 'createdAt'])
+    rows = json.loads(out or '[]')
+    return rows[0]['createdAt'] if rows else None
+
+
+def month_minutes(repo, wf_id):
+    """the billable minutes of this month for the workflow, from GitHub's timing endpoint. This repository is public:
+    its minutes are reported as public; private is 0 (the repository has no private minutes)."""
+    out = gh(['api', 'repos/%s/actions/workflows/%s/timing' % (repo, wf_id), '--jq',
+              '[.billable[]?.total_ms] | add // 0'])
+    total_ms = int(float(out.strip() or 0))
+    return {'public': int(round(total_ms / 60000.0)), 'private': 0}
+
+
+def record(fleet, repo, wf, w, every, runs, now):
+    """the lead's loop record (site's SITE-73 shape): one shape for every fleet. account is not measured (null)."""
+    return {'id': '-/%s/%s' % (repo, wf), 'fleet': fleet, 'account': None, 'repo': repo, 'workflow': wf,
+            'state': state_of(w, runs), 'every_min': every, 'run_min': w.get('run_min'),
+            'last_start': last_started(repo, wf), 'next_start': next_start(w, every, now),
+            'running_now': len(runs), 'minutes_month': month_minutes(repo, w['id'])}
 
 
 def cmd_list(a, repo):
     every, _sha = read_every(repo, a.ref)
+    now = datetime.datetime.now(datetime.timezone.utc)
     loops = []
     for wf, w in sorted(workflows(repo, a.ref).items()):
         if w['scheduled']:
-            loops.append(record(a.fleet, wf, w, every, runs_at_work(repo, wf)))
+            loops.append(record(a.fleet, repo, wf, w, every, runs_at_work(repo, wf), now))
     return {'loops': loops}
 
 
@@ -152,8 +197,10 @@ def cmd_pause(a, repo):
     gh(['workflow', 'disable', a.workflow, '-R', repo], write=True)
     after = one(a, repo, a.workflow)
     every, _ = read_every(repo, a.ref)
-    rb = record(a.fleet, a.workflow, before, every, runs_at_work(repo, a.workflow))
-    ra = record(a.fleet, a.workflow, after, every, runs_at_work(repo, a.workflow))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    runs = runs_at_work(repo, a.workflow)
+    rb = record(a.fleet, repo, a.workflow, before, every, runs, now)
+    ra = record(a.fleet, repo, a.workflow, after, every, runs, now)
     log({'by': a.by, 'fleet': a.fleet, 'cmd': 'pause', 'workflow': a.workflow, 'before': rb, 'after': ra})
     return {'ok': True, 'changed': [{'id': ra['id'], 'before': rb, 'after': ra}]}
 
@@ -163,8 +210,10 @@ def cmd_resume(a, repo):
     gh(['workflow', 'enable', a.workflow, '-R', repo], write=True)
     after = one(a, repo, a.workflow)
     every, _ = read_every(repo, a.ref)
-    rb = record(a.fleet, a.workflow, before, every, runs_at_work(repo, a.workflow))
-    ra = record(a.fleet, a.workflow, after, every, runs_at_work(repo, a.workflow))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    runs = runs_at_work(repo, a.workflow)
+    rb = record(a.fleet, repo, a.workflow, before, every, runs, now)
+    ra = record(a.fleet, repo, a.workflow, after, every, runs, now)
     log({'by': a.by, 'fleet': a.fleet, 'cmd': 'resume', 'workflow': a.workflow, 'before': rb, 'after': ra})
     return {'ok': True, 'changed': [{'id': ra['id'], 'before': rb, 'after': ra}]}
 
@@ -185,10 +234,12 @@ def cmd_every(a, repo):
     res = json.loads(gh(args, write=True))
     commit = (res.get('commit') or {}).get('sha', '')
     changed = []
+    now = datetime.datetime.now(datetime.timezone.utc)
     for wf, w in sorted(workflows(repo, a.ref).items()):
         if w['scheduled']:
-            rb = record(a.fleet, wf, w, old, [])
-            ra = record(a.fleet, wf, w, minutes, [])
+            runs = runs_at_work(repo, wf)
+            rb = record(a.fleet, repo, wf, w, old, runs, now)
+            ra = record(a.fleet, repo, wf, w, minutes, runs, now)
             changed.append({'id': ra['id'], 'before': rb, 'after': ra})
     log({'by': a.by, 'fleet': a.fleet, 'cmd': 'every', 'loop_time_min': {'before': old, 'after': minutes},
          'commit': commit, 'ref': a.ref or 'default', 'loops': [c['id'] for c in changed]})
@@ -202,8 +253,9 @@ def cmd_stop(a, repo):
     after = runs_at_work(repo, a.workflow)
     every, _ = read_every(repo, a.ref)
     w = one(a, repo, a.workflow)
-    rb = record(a.fleet, a.workflow, w, every, before)
-    ra = record(a.fleet, a.workflow, w, every, after)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    rb = record(a.fleet, repo, a.workflow, w, every, before, now)
+    ra = record(a.fleet, repo, a.workflow, w, every, after, now)
     log({'by': a.by, 'fleet': a.fleet, 'cmd': 'stop', 'workflow': a.workflow, 'before': rb, 'after': ra})
     return {'ok': True, 'changed': [{'id': ra['id'], 'before': rb, 'after': ra}]}
 
@@ -217,7 +269,7 @@ def run(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description='fleet loops: list, pause, resume, every, stop (ENG-73)')
-    ap.add_argument('--fleet', default='fleet1')
+    ap.add_argument('--fleet', default='engine', help='engine (the free fleet, this repo), fleet2, ...')
     ap.add_argument('--by', default='engine_helper', help='who asks (the change log)')
     ap.add_argument('--ref', default='', help='a branch to read and write instead of the default (a test)')
     ap.add_argument('--json', action='store_true', help='print one JSON object on stdout')
