@@ -39,7 +39,7 @@ on:
         required: false
         default: ''
   schedule:
-    - cron: '20 */6 * * *'   # every 6h (00/06/12/18 UTC). Runs last ~5h50m → ~10-min gaps = near-continuous,
+    - cron: '20 * * * *'   # hourly base tick (ENG-73): the gate below picks the hours B4L_LOOP_EVERY_MIN names (unset = 6h: 00/06/12/18 UTC). Runs last ~5h50m → ~10-min gaps = near-continuous,
     #                         but still 4 DISCRETE bounded runs/day (not overlapping) so it stays legit CI,
     #                         NOT a 24/7 farm. Do NOT tighten to overlapping — that reads as a compute farm
     #                         (GitHub Actions ToS) and risks a ban that would kill the whole fleet.
@@ -53,7 +53,26 @@ permissions:
   contents: read
 
 jobs:
+  # ENG-73 (loop time): a scheduled run goes on only in the hours repo variable B4L_LOOP_EVERY_MIN names (unset = 360).
+  # A manual dispatch always goes on. Pause = disable this workflow; resume = enable it (tools/fleet_loops.py).
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.due.outputs.go }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: due
+        env:
+          EVERY: ${{ vars.B4L_LOOP_EVERY_MIN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "schedule" ]; then echo "go=true" >> "$GITHUB_OUTPUT"; echo "started by $EVENT: go"; exit 0; fi
+          if bash .github/loop_due.sh "$EVERY"; then echo "go=true" >> "$GITHUB_OUTPUT"; else echo "go=false" >> "$GITHUB_OUTPUT"; fi
+
   donate:
+    needs: [gate]
+    if: needs.gate.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 358
     strategy:
@@ -113,7 +132,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # ENG-73: the respawn obeys the loop time too; when the next window is not due, the hourly cron starts it
+      - uses: actions/checkout@v4
+      - id: due
+        env:
+          EVERY: ${{ vars.B4L_LOOP_EVERY_MIN }}
+        run: |
+          if bash .github/loop_due.sh "$EVERY"; then echo "go=true" >> "$GITHUB_OUTPUT"; else echo "go=false" >> "$GITHUB_OUTPUT"; echo "next window not due: the hourly cron starts it"; fi
       - name: Dispatch the next donation window
+        if: steps.due.outputs.go == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

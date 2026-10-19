@@ -14,7 +14,7 @@
 name: gussybunnies
 on:
   schedule:
-    - cron: '50 */6 * * *'
+    - cron: '50 * * * *'   # hourly base tick (ENG-73): the gate picks the hours B4L_LOOP_EVERY_MIN names (unset = 6h: 00/06/12/18 UTC)
   workflow_dispatch:
     inputs:
       runners:
@@ -24,7 +24,26 @@ on:
 permissions:
   contents: read
 jobs:
+  # ENG-73 (loop time): a scheduled run goes on only in the hours repo variable B4L_LOOP_EVERY_MIN names (unset = 360).
+  # A manual dispatch always goes on. Pause = disable this workflow; resume = enable it (tools/fleet_loops.py).
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.due.outputs.go }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: due
+        env:
+          EVERY: ${{ vars.B4L_LOOP_EVERY_MIN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "schedule" ]; then echo "go=true" >> "$GITHUB_OUTPUT"; echo "started by $EVENT: go"; exit 0; fi
+          if bash .github/loop_due.sh "$EVERY"; then echo "go=true" >> "$GITHUB_OUTPUT"; else echo "go=false" >> "$GITHUB_OUTPUT"; fi
+
   bunnies:
+    needs: [gate]
+    if: needs.gate.outputs.go == 'true'
     strategy:
       fail-fast: false
       matrix:
