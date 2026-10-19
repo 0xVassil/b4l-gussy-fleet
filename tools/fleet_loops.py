@@ -20,11 +20,15 @@ import re
 import subprocess
 import sys
 
-# the fleets' owner/name live in a local file, not in this public repo (the privacy scan): one JSON object,
-# {"fleet1": "<owner>/<repo>", "fleet2": "<owner>/<repo>"}. A fleet with no entry refuses to run.
-FLEETS_FILE = os.path.expanduser('~/B4L_work/engine_helper/fleet_loops_fleets.json')
-FLEETS = json.load(open(FLEETS_FILE, encoding='utf-8')) if os.path.exists(FLEETS_FILE) else {}
-TOKEN_FILE = os.path.expanduser('~/.b4l_partner_gussy_github.token')
+# the fleets' owner/name and the write token's file live in a local file, not in this public repo (the privacy scan):
+# one JSON object, {"fleet1": "<owner>/<repo>", "fleet2": "<owner>/<repo>", "token_file": "<path>"}.
+# A fleet with no entry refuses to run; a write needs token_file.
+CONFIG_FILE = os.path.expanduser('~/B4L_work/engine_helper/loops_config.json')
+CONFIG = {}
+if os.path.exists(CONFIG_FILE):
+    CONFIG = json.load(open(CONFIG_FILE, encoding='utf-8'))
+FLEETS = {k: v for k, v in CONFIG.items() if k != 'token_file'}
+TOKEN_FILE = os.path.expanduser(CONFIG.get('token_file', ''))
 LOG = os.path.expanduser('~/B4L_work/engine_helper/quality/fleet_loops_changelog.jsonl')
 VAR = 'B4L_LOOP_EVERY_MIN'
 DEFAULT_EVERY = 360
@@ -54,6 +58,8 @@ def repo_of(fleet):
 def gh(args, write=False, repo=None):
     env = dict(os.environ)
     if write:
+        if not TOKEN_FILE or not os.path.exists(TOKEN_FILE):
+            sys.exit('no write token: set token_file in the local config (%s)' % CONFIG_FILE)
         env['GH_TOKEN'] = open(TOKEN_FILE, encoding='utf-8').read().strip()
     out = subprocess.run(['gh'] + args, capture_output=True, text=True, env=env, timeout=180)
     if out.returncode != 0:
