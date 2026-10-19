@@ -355,6 +355,7 @@ jobs:
           OR_KEY_A4: ${{ matrix.runner == 4 && secrets.OR_KEY_A4 || '' }}
           ORCA_API_KEY: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.ORCA_API_KEY || '' }}
           VERCEL_AI_GATEWAY_KEY: ${{ matrix.runner == 3 && secrets.VERCEL_AI_GATEWAY_KEY || '' }}
+          NVIDIA_API_KEY: ${{ matrix.runner == 9 && secrets.NVIDIA_API_KEY || '' }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           CC_ENGINE_KEY: ${{ secrets.B4L_ENGINE_KEY }}
           R: ${{ matrix.runner }}
