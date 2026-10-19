@@ -96,11 +96,21 @@ def token_of(fleet):
     return open(path, encoding='utf-8').read().strip()
 
 
+# the only writes a gh login may make (ENG-73, opus_boost 58319): disable, enable and cancel a run. Nothing else.
+GH_LOGIN_WRITES = {('workflow', 'disable'), ('workflow', 'enable'), ('run', 'cancel')}
+
+
 def gh(args, write=None):
-    """gh with the default login, or with the token of the fleet named in write (never printed)"""
+    """gh with the default login, or with the token of the fleet named in write (never printed). A fleet whose credential
+    is gh_login writes through gh's own credential store, and only the three GH_LOGIN_WRITES calls."""
     env = dict(os.environ)
     if write:
-        env['GH_TOKEN'] = token_of(write)
+        if fleet_info(write).get('credential') == 'gh_login':
+            if tuple(args[:2]) not in GH_LOGIN_WRITES:
+                raise Failed('the gh login may only disable, enable or cancel runs: %s refused' % ' '.join(args[:2]))
+            env.pop('GH_TOKEN', None)        # gh's own credential store, not a token
+        else:
+            env['GH_TOKEN'] = token_of(write)
     out = subprocess.run(['gh'] + args, capture_output=True, text=True, env=env, timeout=180)
     if out.returncode != 0:
         msg = (out.stderr or out.stdout).replace(env.get('GH_TOKEN') or '\0', '<token>').strip()
@@ -110,6 +120,8 @@ def gh(args, write=None):
 
 def log(entry):
     entry['at'] = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    if entry.get('fleet') in fleets() and fleet_info(entry['fleet']).get('credential') == 'gh_login':
+        entry['by'] = 'owner'                # the admin's own login: named by role, never by login (opus_boost 58319)
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
     with open(LOG, 'a', encoding='utf-8') as f:
         f.write(json.dumps(entry, sort_keys=True) + '\n')
