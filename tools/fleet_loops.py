@@ -20,10 +20,10 @@ import re
 import subprocess
 import sys
 
-FLEETS = {
-    'fleet1': '0xVassil/b4l-gussy-fleet',
-    # 'fleet2': '<owner/repo>',  # not known to engine_helper yet: asked on the board (ENG-73)
-}
+# the fleets' owner/name live in a local file, not in this public repo (the privacy scan): one JSON object,
+# {"fleet1": "<owner>/<repo>", "fleet2": "<owner>/<repo>"}. A fleet with no entry refuses to run.
+FLEETS_FILE = os.path.expanduser('~/B4L_work/engine_helper/fleet_loops_fleets.json')
+FLEETS = json.load(open(FLEETS_FILE, encoding='utf-8')) if os.path.exists(FLEETS_FILE) else {}
 TOKEN_FILE = os.path.expanduser('~/.b4l_partner_gussy_github.token')
 LOG = os.path.expanduser('~/B4L_work/engine_helper/quality/fleet_loops_changelog.jsonl')
 VAR = 'B4L_LOOP_EVERY_MIN'
