@@ -64,10 +64,10 @@ jobs:
       - uses: actions/checkout@v4
       - id: due
         env:
-          EVERY: ${{ vars.B4L_LOOP_EVERY_MIN }}
           EVENT: ${{ github.event_name }}
         run: |
           if [ "$EVENT" != "schedule" ]; then echo "go=true" >> "$GITHUB_OUTPUT"; echo "started by $EVENT: go"; exit 0; fi
+          EVERY="$(cat .github/loop_every_min 2>/dev/null || true)"
           if bash .github/loop_due.sh "$EVERY"; then echo "go=true" >> "$GITHUB_OUTPUT"; else echo "go=false" >> "$GITHUB_OUTPUT"; fi
 
   donate:
@@ -135,9 +135,8 @@ jobs:
       # ENG-73: the respawn obeys the loop time too; when the next window is not due, the hourly cron starts it
       - uses: actions/checkout@v4
       - id: due
-        env:
-          EVERY: ${{ vars.B4L_LOOP_EVERY_MIN }}
         run: |
+          EVERY="$(cat .github/loop_every_min 2>/dev/null || true)"
           if bash .github/loop_due.sh "$EVERY"; then echo "go=true" >> "$GITHUB_OUTPUT"; else echo "go=false" >> "$GITHUB_OUTPUT"; echo "next window not due: the hourly cron starts it"; fi
       - name: Dispatch the next donation window
         if: steps.due.outputs.go == 'true'
