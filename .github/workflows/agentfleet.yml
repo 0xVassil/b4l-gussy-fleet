@@ -210,6 +210,8 @@ jobs:
         run: |
           wname() { printf '%s_gh%02d' "$LANE" $(( 5*R + $1 )); }
           sudo useradd -m -s /bin/bash lab
+          sudo usermod -aG docker lab   # fleet-fix 10-19: the lab user may reach the Docker socket
+          sudo -u lab -H docker info >/dev/null 2>&1 && echo 'DOCKER lab: reachable' || echo 'DOCKER lab: DENIED'   # fleet-fix diagnostic
           sudo cp -a "$HOME/bunnies" "$HOME/cc.env" /home/lab/
           # every decrypted code kit the workers read (10-06: botapp/suite/engineapp were decrypted into the RUNNER's
           # home only, so all 7 Suite rows that needed them blocked with "~/suite does not exist")
@@ -355,6 +357,7 @@ jobs:
           OR_KEY_A4: ${{ matrix.runner == 4 && secrets.OR_KEY_A4 || '' }}
           ORCA_API_KEY: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.ORCA_API_KEY || '' }}
           VERCEL_AI_GATEWAY_KEY: ${{ matrix.runner == 3 && secrets.VERCEL_AI_GATEWAY_KEY || '' }}
+          NVIDIA_API_KEY: ${{ matrix.runner == 9 && secrets.NVIDIA_API_KEY || '' }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           CC_ENGINE_KEY: ${{ secrets.B4L_ENGINE_KEY }}
           R: ${{ matrix.runner }}
