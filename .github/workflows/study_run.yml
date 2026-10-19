@@ -86,7 +86,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install deps
-        run: pip install --quiet numpy pandas matplotlib scipy ccxt   # ccxt: same warm-up cache-miss fetch path as hunt_trace (SB1 blocker 2026-09-30)
+        # ccxt: same warm-up cache-miss fetch path as hunt_trace (SB1 blocker 2026-09-30). optuna==4.9.0 (ENG-26, T15c,
+        # engine's OK 2026-10-19): tools/optuna_ask_tell.py's TPE arm, which refuses any other version.
+        run: pip install --quiet numpy pandas matplotlib scipy ccxt optuna==4.9.0
 
       - name: Fetch candles
         env:
