@@ -369,6 +369,21 @@ jobs:
               && echo "room runner $R: work left ($(cat "$HOME/rooms/respawn" | tr -d '\n') open): next window dispatched" \
               || echo "::warning::room runner $R: next window dispatch failed"
           fi
+      # FLEET-ENDED (engine 10-20, engine_helper's FIX 18:44Z): a cancelled or timed-out job ends room_runner.py before
+      # its last table, so room-r<N> kept saying "running" and the dispatch held the runner for 45 minutes. This step
+      # runs whatever became of the job: a table this run left at "running" says "ended", with the job's status. A
+      # missing kit or a hub that does not answer fails nothing.
+      - name: the room's end (room only)
+        if: ${{ always() && matrix.lane == 'room' }}
+        env:
+          CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+          CC_ENGINE_KEY: ${{ secrets.B4L_ENGINE_KEY }}
+          R: ${{ matrix.runner }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -f "$HOME/bunnies/room_runner.py" ]; then
+            timeout 150 python3 "$HOME/bunnies/room_runner.py" --ended "$R" "$JOB_STATUS" || echo "room-r$R: the end was not marked"
+          fi
       - name: the rooms' results (room only)
         if: ${{ always() && matrix.lane == 'room' }}
         uses: actions/upload-artifact@v4
