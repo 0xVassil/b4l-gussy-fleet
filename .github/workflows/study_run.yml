@@ -32,6 +32,12 @@ on:
         description: "hard limit for the script, minutes"
         required: false
         default: "120"
+      python:
+        description: "the runner's python: 3.11 (every study before 10-21) or 3.12, whose float sum() is the laptop's and the app's (a lot world's arm)"
+        required: false
+        type: choice
+        options: ["3.11", "3.12"]
+        default: "3.11"
 
 permissions:
   contents: read
@@ -81,9 +87,12 @@ jobs:
           test -f engine/study.json || { echo "::error::kit carries no study.json - not a study kit"; exit 1; }
           echo "kit files: $(find engine -type f | wc -l)"
 
+      # PY312-ARMS (engine, 10-21; opus_boost's yes to 59888): python 3.12's float sum() is Neumaier's compensated sum, 3.11's
+      # a plain add, and with the exchange's 0.1 lot the engine sizes some Sets one lot apart; an arm compared with the laptop
+      # or the app (3.12) runs with python=3.12 (tools/fleet_offload.py study --python 3.12)
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ inputs.python || '3.11' }}
 
       - name: Install deps
         # ccxt: same warm-up cache-miss fetch path as hunt_trace (SB1 blocker 2026-09-30). optuna==4.9.0 (ENG-26, T15c,
