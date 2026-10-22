@@ -361,6 +361,10 @@ jobs:
           R: ${{ matrix.runner }}
           # which roster: the fleet at work (roster.json) unless the dispatch names another (roster_score.json = scoring)
           ROOM_ROSTER: ${{ inputs.roster || 'roster.json' }}
+          # FLEET-SCREENS (opus_boost 60787; the admin's yes ~22:35Z "this way we could always see if they are stuck or dead"):
+          # each agent's screen goes to the Command Center under the runners' own screen key (site made it, 60777)
+          CC_BASE: ${{ secrets.CC_BASE }}
+          CC_AGENT_TOKEN: ${{ secrets.SCREEN_CC_TOKEN }}
           GH_TOKEN: ${{ github.token }}
         run: |
           bash "$HOME/bunnies/run_room.sh" "$R"
