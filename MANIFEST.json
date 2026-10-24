@@ -1,0 +1,11 @@
+{
+ "slugs": [],
+ "files": 96,
+ "candles": {},
+ "urls": {},
+ "study_candles": {
+  "xrp_9m_2023-06-01_2026-10-23.csv": "https://compute.bull4life.com/candles/xrp_9m_2023-06-01_2026-10-23.csv"
+ },
+ "shard_candles": {},
+ "built": "2026-10-24T12:20:07Z"
+}
