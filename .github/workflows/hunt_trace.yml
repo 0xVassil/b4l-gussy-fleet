@@ -33,6 +33,11 @@ on:
       # (disc3m_honest2 09-29, wtlen_joint 10-01). B4L_FILL_OHLC itself travels in the regime. Empty = unchanged.
       fill_candle:     { description: "optional fill-venue candle filename (B4L_FILL_OHLC)", required: false, default: "" }
       fill_candle_url: { description: "absolute URL to fetch that fill candle from", required: false, default: "" }
+      # 2026-10-19 (ENG-19b, one world for the hunt and the test): the app's test world app_test prices each bar's first
+      # minute at the fill venue's 1m close (B4L_FILL_LAST_1M); without that 1m file on the runner every backtest raises
+      # FileNotFoundError. B4L_FILL_LAST_1M itself travels in the regime. Empty = unchanged.
+      fill_last_candle:     { description: "optional fill-venue 1m candle filename (B4L_FILL_LAST_1M)", required: false, default: "" }
+      fill_last_candle_url: { description: "absolute URL to fetch that 1m fill candle from", required: false, default: "" }
 
 permissions:
   contents: read
@@ -84,6 +89,18 @@ jobs:
           curl -sSfL --retry 3 --retry-delay 5 "${{ inputs.fill_candle_url }}" -o "engine/candles/${{ inputs.fill_candle }}"
           ls -l "engine/candles/${{ inputs.fill_candle }}"
 
+      - name: Fetch the fill-venue 1m candle
+        if: ${{ inputs.fill_last_candle != '' }}
+        env:
+          FILE: ${{ inputs.fill_last_candle }}
+          URL: ${{ inputs.fill_last_candle_url }}
+        run: |
+          set -euo pipefail
+          case "$FILE" in */*|.*) echo "::error::fill_last_candle must be a bare file name"; exit 1 ;; esac
+          curl -sSfL --retry 3 --retry-delay 5 "$URL" -o "engine/candles/$FILE"
+          ls -l "engine/candles/$FILE"
+          sha256sum "engine/candles/$FILE"
+
       - name: Seed the hunt from the shipped hof
         working-directory: engine
         run: |
@@ -113,6 +130,31 @@ jobs:
           PY
         env:
           REGIME_JSON: ${{ inputs.regime }}
+
+      # ENG-19b: the proof the hunt reads the fill venue's 1m - the engine's own loader (load_fill_last_1m), under the
+      # regime just applied, on the pinned candle's bars. A file that covers none of them stops the run here.
+      - name: Read the fill-venue 1m candle the way the engine does
+        if: ${{ inputs.fill_last_candle != '' }}
+        working-directory: engine
+        env:
+          SIGNAL_CANDLE: ${{ inputs.candle }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, re, sys
+          import pandas as pd
+          sys.path.insert(0, 'engines')
+          import bull4life_backtest_alt_v1 as E
+          c = os.environ['SIGNAL_CANDLE']
+          ts = pd.to_datetime(pd.read_csv(os.path.join('candles', c), usecols=['ts'])['ts'], utc=True)
+          df = pd.DataFrame(index=pd.DatetimeIndex(ts))
+          _closes, missing, path = E.load_fill_last_1m(df, {'asset': re.match(r'([a-z]+)_', c).group(1)})
+          print('the engine reads the fill venue 1m file %s (B4L_FILL_LAST_1M=%s): %d of %d bars of %s carry its '
+                'first-minute close, %d without' % (os.path.basename(path), os.environ.get('B4L_FILL_LAST_1M'),
+                                                    len(df) - missing, len(df), c, missing))
+          if missing == len(df):
+              sys.exit('::error::the fill venue 1m file covers none of the bars')
+          PY
 
       - name: Traced hunt
         working-directory: engine
