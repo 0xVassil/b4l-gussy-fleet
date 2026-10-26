@@ -360,8 +360,9 @@ jobs:
           ORCA_KEY_A3: ${{ (matrix.runner == 2 || matrix.runner == 8) && secrets.ORCA_KEY_A3 || '' }}
           # engine 10-26: Vercel on the A1 runners (the admin: idle seats to Vercel and Orca)
           VERCEL_AI_GATEWAY_KEY: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.VERCEL_AI_GATEWAY_KEY || '' }}
-          # engine 10-26: NVIDIA on runners 7 and 9 (account A2; the admin: every NVIDIA model is free)
-          NVIDIA_API_KEY: ${{ (matrix.runner == 7 || matrix.runner == 9) && secrets.NVIDIA_API_KEY || '' }}
+          # engine 10-26: NVIDIA by account (the admin's new keys: dmanobela = A1, dmanobelagb = A3; the old shared key is gone)
+          NVIDIA_KEY_A1: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.NVIDIA_KEY_A1 || '' }}
+          NVIDIA_KEY_A3: ${{ (matrix.runner == 2 || matrix.runner == 8) && secrets.NVIDIA_KEY_A3 || '' }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           CC_ENGINE_KEY: ${{ secrets.B4L_ENGINE_KEY }}
           R: ${{ matrix.runner }}
