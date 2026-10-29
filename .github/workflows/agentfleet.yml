@@ -288,7 +288,7 @@ jobs:
           OC_KEY_A3: ${{ matrix.runner == 2 && secrets.OC_KEY_A3 || '' }}
           OR_KEY_A3: ${{ matrix.runner == 2 && secrets.OR_KEY_A3 || '' }}
           OR_KEY_A4: ${{ matrix.runner == 4 && secrets.OR_KEY_A4 || '' }}
-          ORCA_API_KEY: ${{ matrix.runner == 0 && secrets.ORCA_API_KEY || '' }}
+          ORCA_API_KEY: ${{ matrix.runner == 0 && secrets.ORCA_KEY_A1 || '' }}
           VERCEL_AI_GATEWAY_KEY: ${{ matrix.runner == 3 && secrets.VERCEL_AI_GATEWAY_KEY || '' }}
           CC_TOK: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
           R: ${{ matrix.runner }}
@@ -309,7 +309,7 @@ jobs:
           OC1: ${{ secrets.ENGINE_OC_KEY }}
           OC2: ${{ secrets.SITE_OC_KEY }}
           OC3: ${{ secrets.BOT_OC_KEY }}
-          ORCA_API_KEY: ${{ secrets.ORCA_API_KEY }}
+          ORCA_API_KEY: ${{ (((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.ORCA_KEY_A1) || ((matrix.runner == 1 || matrix.runner == 7 || matrix.runner == 9) && secrets.ORCA_KEY_A2) || ((matrix.runner == 2 || matrix.runner == 8) && secrets.ORCA_KEY_A3) || '') }}
           VERCEL_AI_GATEWAY_KEY: ${{ secrets.VERCEL_AI_GATEWAY_KEY }}
           OPENROUTER_API_KEY: ${{ ((matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5) && secrets.OR_KEY_A1) || (matrix.runner == 1 && secrets.OR_KEY_A2) || (matrix.runner == 4 && secrets.OR_KEY_A4) || secrets.OR_KEY_A3 }}   # the runner's own account, as in the lanes step: r0/r3/r5 A1, r1 A2, r2 A3, r4 A4
           # engine 10-13 (helper 51271): ONE OpenRouter key on a runner, its own account's, read by the account's name.
@@ -353,7 +353,6 @@ jobs:
           OC_KEY_A3: ${{ (matrix.runner == 2 || matrix.runner == 8) && secrets.OC_KEY_A3 || '' }}
           OR_KEY_A3: ${{ (matrix.runner == 2 || matrix.runner == 8) && secrets.OR_KEY_A3 || '' }}
           OR_KEY_A4: ${{ matrix.runner == 4 && secrets.OR_KEY_A4 || '' }}
-          ORCA_API_KEY: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.ORCA_API_KEY || '' }}
           # engine 10-26: each account's own Orca key (the admin set ORCA_KEY_A1..A3), on that account's runners only
           ORCA_KEY_A1: ${{ (matrix.runner == 0 || matrix.runner == 3 || matrix.runner == 5 || matrix.runner == 6) && secrets.ORCA_KEY_A1 || '' }}
           ORCA_KEY_A2: ${{ (matrix.runner == 1 || matrix.runner == 7 || matrix.runner == 9) && secrets.ORCA_KEY_A2 || '' }}
