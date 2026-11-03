@@ -401,6 +401,13 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
       # engine 11-03 (site 64975): the call counts alone, so call_counter reads KBs, not the whole rooms-rN artifact
+      # engine 11-03 (site 64982): the slot-to-key map beside the counts, so every call keeps its key name
+      - name: the pool beside the call counts (room only)
+        if: ${{ always() && matrix.lane == 'room' }}
+        run: |
+          mkdir -p /home/runner/rooms/usage
+          f=$(find /home/runner/rooms -maxdepth 2 -name pool.json -not -path '*/usage/*' 2>/dev/null | head -1)
+          if [ -n "$f" ]; then cp "$f" /home/runner/rooms/usage/pool.json; echo "pool.json from $f"; else echo "no pool.json"; fi
       - name: the rooms' call counts (room only)
         if: ${{ always() && matrix.lane == 'room' }}
         uses: actions/upload-artifact@v4
