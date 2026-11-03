@@ -400,6 +400,15 @@ jobs:
           path: /home/runner/rooms
           retention-days: 7
           if-no-files-found: ignore
+      # engine 11-03 (site 64975): the call counts alone, so call_counter reads KBs, not the whole rooms-rN artifact
+      - name: the rooms' call counts (room only)
+        if: ${{ always() && matrix.lane == 'room' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: usage-r${{ matrix.runner }}
+          path: /home/runner/rooms/usage
+          retention-days: 7
+          if-no-files-found: ignore
       - name: summary (counts only)
         if: always()
         run: |
