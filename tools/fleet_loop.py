@@ -36,6 +36,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 HUB = os.environ.get('B4L_CC_HUB') or 'https://bull4life.com/cc'
+HUB_AGENT = os.environ.get('FLEET_LOOP_AGENT') or 'engine'   # the name the hub token belongs to (X-CC-Agent must match it)
 QUEUE_REL = 'engine/current/fleet/queue-r%s.md'
 LOG_REL = 'engine/current/data/fleet-loop-log.jsonl'   # the hub writes artifacts under <owner>/current/<type>/
 CARD_STATE_REL = 'engine/current/state/project-cards.json'
@@ -62,7 +63,7 @@ def http_json(url, token, payload=None, timeout=60):
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode('utf-8')
     req = urllib.request.Request(url, data=data, method='GET' if payload is None else 'POST')
     req.add_header('Authorization', 'Bearer ' + (token or ''))
-    req.add_header('X-CC-Agent', 'fleet-loop')
+    req.add_header('X-CC-Agent', HUB_AGENT)
     if data is not None:
         req.add_header('Content-Type', 'application/json')
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -109,10 +110,10 @@ def open_cards(fetch, kept):
     there is 0 cards, never a guess. The reads are independent and side by side (a hub read takes 1.5-7 s under load: 12 of
     them one after another would hold a pass for a minute and a half - fleet_queue.read_all found the same)."""
     def one(r):
-        try:
-            body = (fetch(QUEUE_REL % r) or {}).get('body') or ''
+        body = (fetch(QUEUE_REL % r) or {}).get('body') or ''
+        try:                              # a read that fails is NOT 0 cards: it is an error the pass reports (a 401 said "0" once)
             doc = json.loads(body) if body.strip() else {}
-        except (ValueError, OSError):
+        except ValueError:
             doc = {}
         return r, len([t for t in (doc.get('tasks') or []) if isinstance(t, dict) and t.get('id')])
 
