@@ -42,7 +42,7 @@ jobs:
         run: gh workflow run fleet_loop.yml -R "$GITHUB_REPOSITORY"
       - name: the loop
         env:
-          B4L_CC_TOKEN: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+          B4L_CC_TOKEN: ${{ secrets.B4L_ENGINE_KEY }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python tools/fleet_loop.py
