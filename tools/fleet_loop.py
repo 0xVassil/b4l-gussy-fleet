@@ -28,6 +28,7 @@ import re
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -105,16 +106,19 @@ def kept_runners(roster=ROSTER, kept_file=KEPT_FILE):
 
 def open_cards(fetch, kept):
     """{runner: open cards}. A queue file holds its OPEN tasks (a closed card moves to done-r<N>.md); a file that is not
-    there is 0 cards, never a guess."""
-    out = {}
-    for r in kept:
+    there is 0 cards, never a guess. The reads are independent and side by side (a hub read takes 1.5-7 s under load: 12 of
+    them one after another would hold a pass for a minute and a half - fleet_queue.read_all found the same)."""
+    def one(r):
         try:
             body = (fetch(QUEUE_REL % r) or {}).get('body') or ''
             doc = json.loads(body) if body.strip() else {}
         except (ValueError, OSError):
             doc = {}
-        out[r] = len([t for t in (doc.get('tasks') or []) if isinstance(t, dict) and t.get('id')])
-    return out
+        return r, len([t for t in (doc.get('tasks') or []) if isinstance(t, dict) and t.get('id')])
+
+    workers = max(1, min(8, len(kept)))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        return dict(ex.map(one, kept))
 
 
 def run_runners(title):
@@ -173,6 +177,7 @@ def one_pass(deps, dry=False):
     """one pass -> the heartbeat line (a dict). deps: fetch, log, gh_runs, gh_dispatch, kept, now, pass_no. Never raises:
     a failing leg is reported in the line, because one bad minute must not end a 6-hour loop."""
     line = {'at': now_iso(deps.get('now')), 'pass': deps.get('pass_no'), 'dry': bool(dry)}
+    started = time.time()
     try:
         kept = deps['kept']()
         line['kept'] = kept
@@ -214,6 +219,7 @@ def one_pass(deps, dry=False):
     except Exception as e:                                                          # noqa: BLE001
         line['refill'] = 'unknown: %s' % e
     if not dry:
+        line['seconds'] = round(time.time() - started, 1)
         try:
             deps['log'](line)
         except Exception as e:                                                      # noqa: BLE001
