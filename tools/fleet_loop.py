@@ -416,6 +416,9 @@ def selftest():
     dry_line = one_pass(deps, dry=True)
     check('pass --dry: nothing dispatched, nothing logged, no queue and no pool written',
           dry_line['dispatched'][0].get('dry') and len(world['logs']) == before_logs and len(world['posts']) == before_posts)
+    args = dispatch_args('o/r', '5', roster='/x/compute/fleet_kit/room_lane/ai_fleet.json')
+    check('dispatch names the live roster (the workflow default roster.json is retired: such a window fails at once)',
+          args[-2:] == ['-f', 'roster=ai_fleet.json'] and 'runners=[5]' in args)
     call_line = one_pass(dict(deps, now=lambda: 1000.0, pass_no=5))
     check('pass: a clock given as a function (the job passes time.time) is read, not taken for a timestamp',
           call_line['at'] == now_iso(1000.0))
@@ -455,6 +458,13 @@ def gh(args, timeout=180):
     return out.stdout
 
 
+def dispatch_args(repo, runner, roster=ROSTER):
+    """the gh call that starts one window. It names the roster: the workflow's own default is the retired roster.json,
+    so a window started without it failed at once (11-05: room 5 failed at 05:43, 05:53 and 06:03Z)"""
+    return ['workflow', 'run', 'agentfleet.yml', '-R', repo, '-f', 'lane=room', '-f', 'runners=[%s]' % runner,
+            '-f', 'roster=%s' % os.path.basename(roster)]
+
+
 def live_deps(token, repo):
     """the job's own reads and writes: the hub, gh's run list, a dispatch in this repo, the log artifact"""
     def runs():
@@ -462,7 +472,7 @@ def live_deps(token, repo):
                               '--json', 'databaseId,status,displayTitle,workflowName']) or '[]')
 
     def dispatch(runner):
-        gh(['workflow', 'run', 'agentfleet.yml', '-R', repo, '-f', 'lane=room', '-f', 'runners=[%s]' % runner])
+        gh(dispatch_args(repo, runner))
         return 'dispatched [%s]' % runner
 
     return {'fetch': lambda rel: hub_get(rel, token), 'log': lambda line: hub_log(line, token),
