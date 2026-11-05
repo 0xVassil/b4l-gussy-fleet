@@ -51,6 +51,8 @@ RUN_RUNNERS = re.compile(r'\[([0-9][0-9,\s]*)\]')
 
 
 def now_iso(t=None):
+    """UTC seconds for a timestamp, a clock function or None (now). The job passes time.time itself, so both work."""
+    t = t() if callable(t) else t
     return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() if t is None else t))
 
 
@@ -205,7 +207,10 @@ def one_pass(deps, dry=False):
                 sent.append({'runner': runner, 'why': why, 'error': str(e)[-200:]})
         line['dispatched'] = sent
     try:
-        line['refill'] = refill_state(deps['fetch'])[0] + " (the generator is engine's card_refill.py; this pass issues no card)"
+        state_kind, state = refill_state(deps['fetch'])
+        under = [r for r, n in opens.items() if n < REFILL_MIN]
+        line['refill'] = '%s; %d kept runner(s) under %d open cards (the generator is engine\'s card_refill.py; this pass ' \
+                         'issues no card)' % (state_kind, len(under), REFILL_MIN)
     except Exception as e:                                                          # noqa: BLE001
         line['refill'] = 'unknown: %s' % e
     if not dry:
@@ -289,6 +294,9 @@ def selftest():
     dry_line = one_pass(deps, dry=True)
     check('pass --dry: nothing dispatched, nothing logged',
           dry_line['dispatched'][0].get('dry') and len(world['logs']) == 2)
+    call_line = one_pass(dict(deps, now=lambda: 1000.0, pass_no=5))
+    check('pass: a clock given as a function (the job passes time.time) is read, not taken for a timestamp',
+          call_line['at'] == now_iso(1000.0))
     boom = dict(deps, gh_dispatch=lambda r: (_ for _ in ()).throw(RuntimeError('gh refused')), pass_no=2)
     line3 = one_pass(boom)
     check('pass: a dispatch that fails is on the line and never ends the loop',
