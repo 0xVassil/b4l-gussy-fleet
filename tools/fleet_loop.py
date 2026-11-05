@@ -37,7 +37,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 HUB = os.environ.get('B4L_CC_HUB') or 'https://bull4life.com/cc'
 QUEUE_REL = 'engine/current/fleet/queue-r%s.md'
-LOG_REL = 'engine/current/state/fleet-loop-log.jsonl'
+LOG_REL = 'engine/current/data/fleet-loop-log.jsonl'   # the hub writes artifacts under <owner>/current/<type>/
 CARD_STATE_REL = 'engine/current/state/project-cards.json'
 ROSTER = os.environ.get('FLEET_ROSTER') or os.path.join(ROOT, 'compute', 'fleet_kit', 'room_lane', 'ai_fleet.json')
 KEPT_FILE = os.path.join(HERE, 'fleet_kept.json')
@@ -87,7 +87,7 @@ def hub_log(line, token):
     prev = (hub_get(LOG_REL, token) or {}).get('body') or ''
     body = (prev if (not prev or prev.endswith('\n')) else prev + '\n') + json.dumps(line, sort_keys=True) + '\n'
     return http_json(HUB + '/api/artifacts', token,
-                     {'type': 'data', 'slug': 'engine/current/state/fleet-loop-log', 'title': "the fleet loop's passes",
+                     {'type': 'data', 'slug': 'fleet-loop-log', 'title': "the fleet loop's passes", 'ext': 'jsonl',
                       'body': body})
 
 
