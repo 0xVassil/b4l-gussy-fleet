@@ -10,10 +10,12 @@ One pass, every 10 minutes inside ONE long job (fleet_loop.yml):
     another lane's run holds no room runner, and a room run that names none is reported as '*' = every runner);
   - a kept runner with open cards and no live or queued window gets one:
     gh workflow run agentfleet.yml -f lane=room -f runners=[N];
-  - the CARD REFILL waits on the one place both the laptop and this job must read (the brief's own rule): the hub card
-    state engine/current/state/project-cards.json. Until it exists this pass issues no card and says so - a second
-    generator without the shared state would issue cards a room already used;
-  - one heartbeat line per pass to engine/current/state/fleet-loop-log.jsonl (time from date -u).
+  - the CARD POOL: the laptop orchestrator is its one writer (engine 11-05). Each pass pops at most POOL_MAX cards from
+    engine/current/data/card-pool.json {version, cards, at}, adds them to the runners under REFILL_MIN open cards (one
+    queue file per runner, deduped by card id), and writes the pool back without them ONLY while its version matches - a
+    mismatch means the laptop refilled meanwhile, so it is re-read and never overwritten. No pool: the refill says so and
+    issues no card (the laptop keeps generating and writing it);
+  - one heartbeat line per pass to engine/current/data/fleet-loop-log.jsonl (time from date -u).
 
     python tools/fleet_loop.py --once [--dry]     one pass (--dry prints the plan and dispatches nothing)
     python tools/fleet_loop.py                    the job: a pass every 10 min until 5 h 45 m, then exit 0
@@ -39,7 +41,8 @@ HUB = os.environ.get('B4L_CC_HUB') or 'https://bull4life.com/cc'
 HUB_AGENT = os.environ.get('FLEET_LOOP_AGENT') or 'engine'   # the name the hub token belongs to (X-CC-Agent must match it)
 QUEUE_REL = 'engine/current/fleet/queue-r%s.md'
 LOG_REL = 'engine/current/data/fleet-loop-log.jsonl'   # the hub writes artifacts under <owner>/current/<type>/
-CARD_STATE_REL = 'engine/current/state/project-cards.json'
+POOL_RELS = ('engine/current/data/card-pool.json', 'engine/current/state/card-pool.json')   # data first: the hub's real type
+POOL_MAX = 24                                      # cards one pass moves at most (the brief's batch)
 ROSTER = os.environ.get('FLEET_ROSTER') or os.path.join(ROOT, 'compute', 'fleet_kit', 'room_lane', 'ai_fleet.json')
 KEPT_FILE = os.path.join(HERE, 'fleet_kept.json')
 DEFAULT_KEPT = ('0', '1', '2')
@@ -158,24 +161,100 @@ def plan_pass(opens, held, kept):
     return due[:MAX_DISPATCH]
 
 
-def refill_state(fetch):
-    """('ready', the state) when the one hub card state both the laptop and this job read exists, else ('waits', {})."""
-    doc = fetch(CARD_STATE_REL) or {}
-    body = doc.get('body') or ''
-    if isinstance(body, dict):
-        state = body
-    else:
-        try:
-            state = json.loads(body) if body.strip() else {}
-        except ValueError:
-            state = {}
-    if not isinstance(state, dict) or not state.get('version'):
-        return 'waits', {}
-    return 'ready', state
+def read_pool(fetch):
+    """('ready', {version, cards, at}) when the laptop's card pool is there - the laptop orchestrator is its ONE writer
+    (engine 11-05, FLEET-LOOP-GH: card generation stays on the laptop; this job only pops) - else ('waits', {}). The two
+    rels: the hub writes <owner>/current/<type>/, so data comes first, the brief's state path second."""
+    for rel in POOL_RELS:
+        doc = fetch(rel) or {}
+        body = doc.get('body') or ''
+        if isinstance(body, dict):
+            pool = body
+        else:
+            try:
+                pool = json.loads(body) if body.strip() else {}
+            except ValueError:
+                pool = {}
+        if isinstance(pool, dict) and isinstance(pool.get('cards'), list):
+            return 'ready', pool
+    return 'waits', {}
+
+
+def _bump(v):
+    try:
+        return int(v) + 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def plan_refill(opens, pool, kept):
+    """{runner: [cards]}: the kept runners under REFILL_MIN open cards, in kept order, each brought up to REFILL_MIN at
+    most, POOL_MAX cards in all, taken from the pool in its own order. A card with no id is skipped: it cannot be deduped."""
+    cards = [c for c in (pool.get('cards') or []) if isinstance(c, dict) and c.get('id')]
+    out, take = {}, 0
+    for r in kept:
+        want = min(REFILL_MIN - opens.get(r, 0), POOL_MAX - take)
+        if want <= 0:
+            continue
+        got = cards[take:take + want]
+        if not got:
+            break
+        out[r] = got
+        take += len(got)
+        if take >= POOL_MAX:
+            break
+    return out
+
+
+def queue_add(fetch, post, runner, cards):
+    """Add cards to a runner's queue file (the room's own shape) and return how many were really added: a card whose id is
+    already open there is skipped, so a pass that runs twice adds nothing twice. shortcut: the queue file has no version,
+    so a laptop write landing between this read and this write is lost; the next pass re-reads it (upgrade: a version on
+    the queue file, as the pool has)."""
+    body = (fetch(QUEUE_REL % runner) or {}).get('body') or ''
+    try:
+        q = json.loads(body) if body.strip() else {}
+    except ValueError:
+        q = {}
+    have = {t.get('id') for t in (q.get('tasks') or []) if isinstance(t, dict)}
+    new = [c for c in cards if c.get('id') not in have]
+    if not new:
+        return 0
+    tasks = [t for t in (q.get('tasks') or []) if isinstance(t, dict)]
+    tasks += [dict(c, room=c.get('room') or q.get('room') or 'fetch', added=c.get('added') or now_iso()) for c in new]
+    post('fleet', 'queue-r%s' % runner, {'schema': 'b4l.fleet_queue/1', 'runner': str(runner), 'room': q.get('room') or 'fetch',
+                                         'at': now_iso(), 'tasks': tasks})
+    return len(new)
+
+
+def pop_pool(fetch, post, opens, kept):
+    """Move cards from the laptop's pool into the runners' queues (this job is the queues' only writer when the pool is
+    live) -> (moved, one heartbeat sentence). The pool is written back without the moved cards ONLY while its version
+    still matches; a mismatch means the laptop refilled meanwhile, so it is re-read and never overwritten - the moved ids
+    stay in the pool and the next pass finds them already queued (queue_add dedupes), so nothing is queued twice."""
+    kind, pool = read_pool(fetch)
+    if kind != 'ready':
+        return 0, 'waits (no pool: the laptop generator writes it)'
+    plan = plan_refill(opens, pool, kept)
+    if not plan:
+        why = 'no card held' if not (pool.get('cards') or []) else 'every kept runner is at %d or more open' % REFILL_MIN
+        return 0, 'pool v%s: %s' % (pool.get('version'), why)
+    moved = sum(queue_add(fetch, post, r, cards) for r, cards in plan.items())
+    moved_ids = {c.get('id') for cards in plan.values() for c in cards}
+    kind2, again = read_pool(fetch)
+    if kind2 != 'ready' or str(again.get('version')) != str(pool.get('version')):
+        return moved, 'pool v%s: %d queued; the pool changed meanwhile (v%s): not written back, next pass re-reads' % (
+            pool.get('version'), moved, again.get('version'))
+    keep = [c for c in (pool.get('cards') or []) if isinstance(c, dict) and c.get('id') not in moved_ids]
+    out = dict(pool, version=_bump(pool.get('version')), cards=keep, at=now_iso(),
+               popped={'at': now_iso(), 'cards': sorted(moved_ids), 'n': moved})
+    post('data', 'card-pool', out)
+    return moved, 'pool v%s -> v%s: %d card(s) to %d runner(s), %d left' % (
+        pool.get('version'), out['version'], moved, len(plan), len(keep))
 
 
 def one_pass(deps, dry=False):
-    """one pass -> the heartbeat line (a dict). deps: fetch, log, gh_runs, gh_dispatch, kept, now, pass_no. Never raises:
+    """one pass -> the heartbeat line (a dict). deps: fetch, log, gh_runs, gh_dispatch, post, kept, now, pass_no. Never raises:
     a failing leg is reported in the line, because one bad minute must not end a 6-hour loop."""
     line = {'at': now_iso(deps.get('now')), 'pass': deps.get('pass_no'), 'dry': bool(dry)}
     started = time.time()
@@ -213,10 +292,15 @@ def one_pass(deps, dry=False):
                 sent.append({'runner': runner, 'why': why, 'error': str(e)[-200:]})
         line['dispatched'] = sent
     try:
-        state_kind, state = refill_state(deps['fetch'])
         under = [r for r, n in opens.items() if n < REFILL_MIN]
-        line['refill'] = '%s; %d kept runner(s) under %d open cards (the generator is engine\'s card_refill.py; this pass ' \
-                         'issues no card)' % (state_kind, len(under), REFILL_MIN)
+        if dry:
+            kind, pool = read_pool(deps['fetch'])
+            line['refill'] = ('ready: pool v%s, %d card(s), %d runner(s) under %d (dry: nothing moved)'
+                              % (pool.get('version'), len(pool.get('cards') or []), len(under), REFILL_MIN)) if kind == 'ready' \
+                else 'waits (no pool: the laptop generator writes it)'
+        else:
+            _, note = pop_pool(deps['fetch'], deps['post'], opens, kept)
+            line['refill'] = '%s; %d runner(s) under %d' % (note, len(under), REFILL_MIN)
     except Exception as e:                                                          # noqa: BLE001
         line['refill'] = 'unknown: %s' % e
     if not dry:
@@ -270,15 +354,23 @@ def selftest():
                         {'databaseId': 4, 'status': 'in_progress', 'displayTitle': 'agentfleet bot [9]'}]) ==
           {'1': '1', '*': '3'} and plan_pass({'0': 24}, {'*': '3'}, ['0', '1']) == [])
     world = {'queues': {'0': {'tasks': [{'id': 'SI1'}, {'id': 'SI2'}]}, '1': {'tasks': []}, '2': {'tasks': [{'id': 'SI3'}]}},
-             'state': None, 'posts': [], 'logs': []}
+             'pool': None, 'posts': [], 'logs': []}
 
     def fetch(rel):
-        if rel == CARD_STATE_REL:
-            return {'body': world['state']} if world['state'] else {}
+        if rel in POOL_RELS:
+            return {'body': json.dumps(world['pool'])} if world['pool'] else {}
         m = re.match(r'engine/current/fleet/queue-r(.+)\.md$', rel)
         if m:
             return {'body': json.dumps(world['queues'].get(m.group(1), {}))} if m.group(1) in world['queues'] else {}
         return {}
+
+    def post(kind, slug, obj):
+        world['posts'].append(kind + '/' + slug)
+        if kind == 'fleet' and slug.startswith('queue-r'):
+            world['queues'][slug[len('queue-r'):]] = obj
+        elif kind == 'data' and slug == 'card-pool':
+            world['pool'] = obj
+        return {'ok': True}
 
     sent = []
 
@@ -286,21 +378,44 @@ def selftest():
         sent.append(r)
         return 'run %d' % (900 + len(sent))
 
-    deps = {'fetch': fetch, 'log': world['logs'].append,
+    deps = {'fetch': fetch, 'post': post, 'log': world['logs'].append,
             'gh_runs': lambda: [{'databaseId': 7, 'status': 'in_progress', 'displayTitle': 'agentfleet room [2]'}],
             'gh_dispatch': gh_dispatch, 'kept': lambda: kept, 'now': 1000.0, 'pass_no': 1}
     line = one_pass(deps)
     check('pass: a runner with cards and no window is dispatched; the one a live run holds is not',
           [s['runner'] for s in line['dispatched']] == ['0'] and sent == ['0'])
-    check('pass: the refill waits on the hub card state and issues no card (no queue is ever posted)',
+    check('pass: with no card pool the refill says it waits and no queue is written',
           line['refill'].startswith('waits') and not any('queue' in p for p in world['posts']))
-    world['state'] = json.dumps({'version': 3, 'issued': ['A1']})
+    world['pool'] = {'version': 1, 'cards': [{'id': 'POOL1', 'title': 'a card'}], 'at': now_iso()}
     line2 = one_pass(deps)
-    check('pass: with the hub card state there the refill reads it (version) and still issues no card of its own',
-          line2['refill'].startswith('ready') and not any('queue' in p for p in world['posts']))
+    check('pass: a card in the pool goes to the runner under 20 open cards, and the pool is written back without it',
+          'POOL1' in [t['id'] for t in world['queues']['0']['tasks']] and world['pool']['version'] == 2
+          and not world['pool']['cards'] and 'pool v1 -> v2' in line2['refill'])
+    world['pool'] = {'version': 5, 'cards': [{'id': 'POOL1', 'title': 'a card'}], 'at': now_iso()}
+    line2b = one_pass(deps)
+    check('pool: a card the laptop publishes again (a pop it never saw) is not queued twice - the queue dedupes it',
+          world['pool']['version'] == 6 and not world['pool']['cards'] and '0 card(s)' in line2b['refill']
+          and [t['id'] for t in world['queues']['0']['tasks']].count('POOL1') == 1)
+    reads = {'n': 0}
+
+    def fetch_moves(rel):
+        if rel in POOL_RELS:
+            reads['n'] += 1
+            return {'body': json.dumps({'version': reads['n'], 'cards': [{'id': 'POOL2', 'title': 'b'}], 'at': now_iso()})}
+        return fetch(rel)
+
+    before = json.dumps(world['pool'])
+    moved2, note2 = pop_pool(fetch_moves, post, {'0': 0}, ['0'])
+    check('pool: a version that moves between its read and its write is never overwritten (re-read, the card stays)',
+          'not written back' in note2 and 'POOL2' in [t['id'] for t in world['queues']['0']['tasks']]
+          and json.dumps(world['pool']) == json.dumps(json.loads(before)))
+    world['pool'] = {'version': 9, 'cards': [], 'at': now_iso()}
+    moved3, note3 = pop_pool(fetch, post, {'0': 0}, ['0'])
+    check('pool: an empty pool moves nothing and says so', moved3 == 0 and 'no card held' in note3)
+    before_logs, before_posts = len(world['logs']), len(world['posts'])
     dry_line = one_pass(deps, dry=True)
-    check('pass --dry: nothing dispatched, nothing logged',
-          dry_line['dispatched'][0].get('dry') and len(world['logs']) == 2)
+    check('pass --dry: nothing dispatched, nothing logged, no queue and no pool written',
+          dry_line['dispatched'][0].get('dry') and len(world['logs']) == before_logs and len(world['posts']) == before_posts)
     call_line = one_pass(dict(deps, now=lambda: 1000.0, pass_no=5))
     check('pass: a clock given as a function (the job passes time.time) is read, not taken for a timestamp',
           call_line['at'] == now_iso(1000.0))
@@ -351,6 +466,9 @@ def live_deps(token, repo):
         return 'dispatched [%s]' % runner
 
     return {'fetch': lambda rel: hub_get(rel, token), 'log': lambda line: hub_log(line, token),
+            'post': lambda kind, slug, body: http_json(HUB + '/api/artifacts', token,
+                                                       {'type': kind, 'slug': slug, 'title': 'the fleet loop (%s)' % kind,
+                                                        'body': json.dumps(body, ensure_ascii=False)}),
             'gh_runs': runs, 'gh_dispatch': dispatch, 'kept': kept_runners, 'now': time.time}
 
 
