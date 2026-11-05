@@ -1,0 +1,5 @@
+{
+ "kept": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"],
+ "at": "2026-11-05T04:40:00Z",
+ "source": "compute/fleet_kit/room_lane/ai_fleet.json (the roster's kept list; the job reads the roster when the kit is fetched)"
+}
