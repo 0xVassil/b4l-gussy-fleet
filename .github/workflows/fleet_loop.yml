@@ -9,11 +9,12 @@
 #     the live one), and a */30 watchdog covers a lost dispatch or a crashed run (a newer pending run replaces the older
 #     pending one, so the watchdog can never stack runs);
 #   - each pass: a kept runner with open cards and no live/queued window gets one; one heartbeat line per pass to the hub
-#     artifact engine/current/state/fleet-loop-log.jsonl (read by the laptop panel; RED when the last line is older than
+#     artifact engine/current/data/fleet-loop-log.jsonl (read by the laptop panel; RED when the last line is older than
 #     25 minutes).
-# The card REFILL waits on the one hub card state both the laptop and this job read (engine/current/state/project-cards.json);
-# with no state there a pass issues no card and says so - a second generator without it would issue cards a room used.
-# Secrets: only the existing B4L_ENGINE_CC_TOKEN (the hub) and this repo's own github.token. Nothing printed.
+# The card POOL: the laptop orchestrator is its one writer (engine/current/data/card-pool.json {version, cards, at}); each
+# pass pops cards from it into the runners' queues with a version check (FLEET-LOOP-GH's pool half).
+# Secrets: only the existing B4L_ENGINE_KEY (the hub; engine 05:0xZ: B4L_ENGINE_CC_TOKEN answers 401) and this repo's own
+# github.token. Nothing printed.
 name: fleet_loop
 run-name: fleet_loop
 on:
