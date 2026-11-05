@@ -1,0 +1,48 @@
+# fleet_loop.yml - the free fleet's keep-busy loop as ONE long GitHub job (row FLEET-LOOP-GH).
+# The admin, 11-05: "put the loop on github runners and let the superagent handle it ... the loop runner will always be
+# live or with only 10-20 minutes that the loop chill per 6 hours". GitHub's cron is late 5-30 min under load, so a
+# 10-minute cron job would be off more than on. Instead:
+#   - ONE long job: a pass every 10 minutes, exiting by itself at 5 h 45 m (timeout-minutes 355 is its fence);
+#   - concurrency group fleet-loop, cancel-in-progress false: GitHub keeps at most one run waiting behind the live one
+#     and starts it seconds after the live one ends, so the gap per 6 h is a fresh runner's start (~1 min);
+#   - a successor is always queued two ways: this run dispatches the next run of itself at its START (it queues behind
+#     the live one), and a */30 watchdog covers a lost dispatch or a crashed run (a newer pending run replaces the older
+#     pending one, so the watchdog can never stack runs);
+#   - each pass: a kept runner with open cards and no live/queued window gets one; one heartbeat line per pass to the hub
+#     artifact engine/current/state/fleet-loop-log.jsonl (read by the laptop panel; RED when the last line is older than
+#     25 minutes).
+# The card REFILL waits on the one hub card state both the laptop and this job read (engine/current/state/project-cards.json);
+# with no state there a pass issues no card and says so - a second generator without it would issue cards a room used.
+# Secrets: only the existing B4L_ENGINE_CC_TOKEN (the hub) and this repo's own github.token. Nothing printed.
+name: fleet_loop
+run-name: fleet_loop
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: fleet-loop
+  cancel-in-progress: false
+jobs:
+  loop:
+    name: the fleet loop (one pass every 10 min, exit at 5 h 45 m)
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: queue the successor behind this live run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run fleet_loop.yml -R "$GITHUB_REPOSITORY"
+      - name: the loop
+        env:
+          B4L_CC_TOKEN: ${{ secrets.B4L_ENGINE_CC_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python tools/fleet_loop.py
