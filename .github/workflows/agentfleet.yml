@@ -403,7 +403,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rooms-r${{ matrix.runner }}
-          path: /home/runner/rooms
+          # 11-06: the project cards' workspaces (rooms/<room>/ws/<agent>/<card>/: a whole engine snapshot, about 15 MB and
+          # 4,000 files a card) were the artifact (r10: 428 MB, 113,498 files; r11: 2.1 GB), and the old window's upload held its
+          # runner's next window 2 to 35 minutes. No reader uses them (project_land reads ledger.jsonl and answers/;
+          # free_limit_study drops ws/ itself).
+          path: |
+            /home/runner/rooms
+            !/home/runner/rooms/*/ws/**
           retention-days: 7
           if-no-files-found: ignore
       # engine 11-03 (site 64975): the call counts alone, so call_counter reads KBs, not the whole rooms-rN artifact
